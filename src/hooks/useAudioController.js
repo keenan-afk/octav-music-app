@@ -1,0 +1,822 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { REAL_INITIAL_TRACKS } from '../data/mockTracks';
+import { fetchSyncedLyrics } from '../services/lyricsApi';
+import { audioEqualizer } from '../services/audioEqualizer';
+import {
+  resolveFullAudioStream,
+  fetchSmartRadioRecommendations,
+  getTrackDedupeKey,
+  getTrackKey,
+} from '../services/musicApi';
+import { syncUserDataToCloud } from '../services/supabaseClient';
+import { recordTrackPlay } from '../services/statsService';
+
+const STORAGE_KEY_LIKED = 'spotify_liquid_liked_tracks';
+const STORAGE_KEY_RECENT = 'spotify_liquid_recent_tracks';
+const STORAGE_KEY_CROSSFADE = 'spotify_liquid_crossfade';
+
+export function useAudioController(user = null, region = 'ID') {
+  const getLikedKey = () => (user?.id ? `octav_user_${user.id}_liked_tracks` : STORAGE_KEY_LIKED);
+  const getLegacyLikedKey = () => (user?.id ? `vetra_user_${user.id}_liked_tracks` : null);
+  const getRecentKey = () => (user?.id ? `octav_user_${user.id}_recent_tracks` : STORAGE_KEY_RECENT);
+  const getLegacyRecentKey = () => (user?.id ? `vetra_user_${user.id}_recent_tracks` : null);
+
+  // Load saved liked tracks and recently played from localStorage
+  const [likedTracks, setLikedTracks] = useState(() => {
+    try {
+      const key = user?.id ? `octav_user_${user.id}_liked_tracks` : STORAGE_KEY_LIKED;
+      const legacyKey = user?.id ? `vetra_user_${user.id}_liked_tracks` : null;
+      const saved = localStorage.getItem(key) || (legacyKey ? localStorage.getItem(legacyKey) : null);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to read liked tracks from storage:', e);
+    }
+    return [REAL_INITIAL_TRACKS[0], REAL_INITIAL_TRACKS[2]];
+  });
+
+  const [recentlyPlayed, setRecentlyPlayed] = useState(() => {
+    try {
+      const key = user?.id ? `octav_user_${user.id}_recent_tracks` : STORAGE_KEY_RECENT;
+      const legacyKey = user?.id ? `vetra_user_${user.id}_recent_tracks` : null;
+      const saved = localStorage.getItem(key) || (legacyKey ? localStorage.getItem(legacyKey) : null);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to read recent tracks from storage:', e);
+    }
+    return REAL_INITIAL_TRACKS.slice(0, 4);
+  });
+
+  // Re-sync liked tracks and recently played when user changes (Login / Logout / Switch)
+  useEffect(() => {
+    const lKey = getLikedKey();
+    const legLKey = getLegacyLikedKey();
+    const rKey = getRecentKey();
+    const legRKey = getLegacyRecentKey();
+    try {
+      const savedLiked = localStorage.getItem(lKey) || (legLKey ? localStorage.getItem(legLKey) : null);
+      if (savedLiked) {
+        const parsed = JSON.parse(savedLiked);
+        if (Array.isArray(parsed)) setLikedTracks(parsed);
+      } else if (!user) {
+        setLikedTracks([REAL_INITIAL_TRACKS[0], REAL_INITIAL_TRACKS[2]]);
+      }
+
+      const savedRecent = localStorage.getItem(rKey) || (legRKey ? localStorage.getItem(legRKey) : null);
+      if (savedRecent) {
+        const parsed = JSON.parse(savedRecent);
+        if (Array.isArray(parsed)) setRecentlyPlayed(parsed);
+      }
+    } catch (e) {}
+  }, [user?.id]);
+
+  const [currentTrack, setCurrentTrack] = useState(REAL_INITIAL_TRACKS[0]);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(REAL_INITIAL_TRACKS[0].duration);
+  const [volume, setVolumeState] = useState(0.8);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isShuffle, setIsShuffle] = useState(false);
+  const [repeatMode, setRepeatMode] = useState('off'); // 'off' | 'all' | 'one'
+  const [playbackSpeed, setPlaybackSpeedState] = useState(1.0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [playlistQueue, setPlaylistQueue] = useState(REAL_INITIAL_TRACKS);
+
+  // A-B Looper State
+  const [loopA, setLoopAState] = useState(null);
+  const [loopB, setLoopBState] = useState(null);
+  const [isLooping, setIsLooping] = useState(false);
+
+  // Crossfade Setting (0 = Off, 2, 4, 6 seconds)
+  const [crossfadeDuration, setCrossfadeDurationState] = useState(() => {
+    try {
+      const val = Number(localStorage.getItem(STORAGE_KEY_CROSSFADE));
+      return isNaN(val) ? 0 : val;
+    } catch {
+      return 0;
+    }
+  });
+
+  // Isolator mode state (normal | guitarFocus | backingTrack | bassPunch)
+  const [isolatorMode, setIsolatorModeState] = useState('normal');
+
+  const audioRef = useRef(null);
+  const rafRef = useRef(null);
+  const loopRef = useRef({ loopA, loopB, isLooping });
+  loopRef.current = { loopA, loopB, isLooping };
+
+  // Sync liked tracks to localStorage and Supabase Cloud
+  useEffect(() => {
+    try {
+      const key = getLikedKey();
+      localStorage.setItem(key, JSON.stringify(likedTracks));
+      if (user?.id && user?.isSupabase) {
+        syncUserDataToCloud({ likedTracks });
+      }
+    } catch (e) {
+      console.warn('Failed to persist liked tracks:', e);
+    }
+  }, [likedTracks, user?.id, user?.isSupabase]);
+
+  // Sync recently played to localStorage
+  useEffect(() => {
+    try {
+      const key = getRecentKey();
+      localStorage.setItem(key, JSON.stringify(recentlyPlayed));
+    } catch (e) {
+      console.warn('Failed to persist recent tracks:', e);
+    }
+  }, [recentlyPlayed, user?.id]);
+
+  // Sync crossfade to localStorage
+  const setCrossfadeDuration = useCallback((val) => {
+    const num = Number(val) || 0;
+    setCrossfadeDurationState(num);
+    try {
+      localStorage.setItem(STORAGE_KEY_CROSSFADE, num.toString());
+    } catch (e) {
+      console.warn('Failed saving crossfade:', e);
+    }
+  }, []);
+
+  // Session-played memory to prevent repeating recently played songs in Infinite Radio
+  const playedHistoryRef = useRef([]); // Stores last 40 played tracks FIFO: [{ id, title, artist, key, dedupeKey }]
+  const sessionPlayedRef = useRef(new Set());
+  const isFetchingRadioRef = useRef(false);
+  const handleNextTrackRef = useRef();
+  const playTrackRef = useRef();
+
+  const repeatModeRef = useRef(repeatMode);
+  useEffect(() => {
+    repeatModeRef.current = repeatMode;
+  }, [repeatMode]);
+
+  // Derived set of liked track IDs
+  const likedTrackIds = new Set(likedTracks.map((t) => t.id));
+  const isLiked = likedTrackIds.has(currentTrack.id);
+
+  // Initialize HTML5 Audio Element
+  useEffect(() => {
+    const audio = new Audio();
+    audio.preload = 'metadata';
+    audio.volume = volume;
+    audio.playbackRate = playbackSpeed;
+
+    // Pitch Locking on HTML5 Audio Element
+    audio.preservesPitch = true;
+    audio.mozPreservesPitch = true;
+    audio.webkitPreservesPitch = true;
+
+    audioRef.current = audio;
+
+    // Connect Web Audio Equalizer & Spatial Engine
+    try {
+      audioEqualizer.init(audio);
+    } catch (e) {
+      console.warn('Equalizer init deferred:', e);
+    }
+
+    const handleLoadedMetadata = () => {
+      // True Track Duration from Full Audio Stream
+      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+        setDuration(Math.floor(audio.duration));
+      } else if (currentTrack.duration) {
+        setDuration(currentTrack.duration);
+      }
+      setIsLoading(false);
+      audio.playbackRate = playbackSpeed;
+    };
+
+    const handleWaiting = () => setIsLoading(true);
+    const handleCanPlay = () => setIsLoading(false);
+
+    // Direct native timeupdate handler
+    const handleTimeUpdate = () => {
+      if (audio.currentTime != null && !isNaN(audio.currentTime)) {
+        const cur = audio.currentTime;
+        setCurrentTime(cur);
+
+        // A-B Looper boundary check
+        const { loopA, loopB, isLooping } = loopRef.current;
+        if (isLooping && loopA !== null && loopB !== null && cur >= loopB) {
+          audio.currentTime = loopA;
+          setCurrentTime(loopA);
+          return;
+        }
+
+        // Smooth Crossfade volume fade-out near track end
+        if (crossfadeDuration > 0 && audio.duration > 0) {
+          const timeLeft = audio.duration - cur;
+          if (timeLeft <= crossfadeDuration && timeLeft > 0) {
+            const factor = Math.max(0, timeLeft / crossfadeDuration);
+            audio.volume = factor * volume;
+          } else {
+            audio.volume = volume;
+          }
+        }
+      }
+    };
+
+    const handleEnded = () => {
+      if (repeatModeRef.current === 'one') {
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+      } else {
+        handleNextTrackRef.current?.(true);
+      }
+    };
+
+    const handleError = () => {
+      console.warn('Audio playback error encountered on stream URL:', audio.src);
+      setIsLoading(false);
+      // Fallback: If CORS blocked the stream with anonymous crossOrigin, retry without crossOrigin
+      if (audio.crossOrigin) {
+        audio.crossOrigin = null;
+        if (audio.src) {
+          const currentSrc = audio.src;
+          audio.src = currentSrc;
+          audio.load();
+          audio.play().catch(() => {});
+        }
+      }
+    };
+
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('waiting', handleWaiting);
+    audio.addEventListener('canplay', handleCanPlay);
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('error', handleError);
+
+    return () => {
+      audio.pause();
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('waiting', handleWaiting);
+      audio.removeEventListener('canplay', handleCanPlay);
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('error', handleError);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  // RequestAnimationFrame loop for ultra-smooth 60fps seek bar sync + Real-time Audio-Reactive shader drive
+  const updateProgressLoop = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio && !audio.paused) {
+      setCurrentTime(audio.currentTime);
+
+      // A-B Looper frame check for instant sub-frame precision
+      const { loopA, loopB, isLooping } = loopRef.current;
+      if (isLooping && loopA !== null && loopB !== null && audio.currentTime >= loopB) {
+        audio.currentTime = loopA;
+        setCurrentTime(loopA);
+      }
+
+      // Drive --bass-pulse CSS variable dynamically
+      const bassVal = audioEqualizer.getBassEnergy();
+      document.documentElement.style.setProperty('--bass-pulse', bassVal.toFixed(3));
+
+      rafRef.current = requestAnimationFrame(updateProgressLoop);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isPlaying) {
+      rafRef.current = requestAnimationFrame(updateProgressLoop);
+    } else {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      document.documentElement.style.setProperty('--bass-pulse', '0');
+    }
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [isPlaying, updateProgressLoop]);
+
+  // Play / Pause Toggle
+  const togglePlayPause = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    audioEqualizer.resume();
+
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+    } else {
+      audio
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch((err) => {
+          console.warn('Playback failed:', err);
+          setIsPlaying(false);
+        });
+    }
+  }, [isPlaying]);
+
+  // Compute session blacklist: current track + last 40 played tracks FIFO + all tracks sitting in queue
+  const getSessionPlayedKeys = useCallback(() => {
+    const keys = new Set();
+    if (currentTrack) {
+      if (currentTrack.id) keys.add(currentTrack.id);
+      keys.add(getTrackKey(currentTrack));
+      keys.add(getTrackDedupeKey(currentTrack));
+    }
+    playedHistoryRef.current.forEach((t) => {
+      if (t.id) keys.add(t.id);
+      if (t.key) keys.add(t.key);
+      if (t.dedupeKey) keys.add(t.dedupeKey);
+    });
+    playlistQueue.forEach((t) => {
+      if (t.id) keys.add(t.id);
+      keys.add(getTrackKey(t));
+      keys.add(getTrackDedupeKey(t));
+    });
+    sessionPlayedRef.current.forEach((k) => keys.add(k));
+    return keys;
+  }, [currentTrack, playlistQueue]);
+
+  // Smart Auto-Queue (Infinite Non-Repeating Radio Engine):
+  // When approaching or reaching end of queue, fetch curated peer tracks and append automatically
+  const triggerAutoQueue = useCallback(
+    async (seed = currentTrack, autoPlayNext = false) => {
+      if (isFetchingRadioRef.current || !seed) return;
+      isFetchingRadioRef.current = true;
+      try {
+        const blacklist = getSessionPlayedKeys();
+        const recs = await fetchSmartRadioRecommendations(seed, blacklist, region || 'ID');
+        if (recs && recs.length > 0) {
+          let newlyAppended = [];
+          setPlaylistQueue((prev) => {
+            const existingIds = new Set(prev.map((t) => t.id));
+            const existingKeys = new Set(prev.map((t) => getTrackKey(t)));
+            const existingDedupes = new Set(prev.map((t) => getTrackDedupeKey(t)));
+            const fresh = recs.filter(
+              (t) =>
+                !existingIds.has(t.id) &&
+                !existingKeys.has(getTrackKey(t)) &&
+                !existingDedupes.has(getTrackDedupeKey(t))
+            );
+            newlyAppended = fresh;
+            return fresh.length > 0 ? [...prev, ...fresh] : prev;
+          });
+
+          // If autoPlayNext requested (queue ended without repeat), seamlessly start next recommendation
+          if (autoPlayNext && newlyAppended.length > 0) {
+            playTrackRef.current?.(newlyAppended[0]);
+          }
+        } else if (autoPlayNext) {
+          setIsLoading(false);
+          setIsPlaying(false);
+        }
+      } catch (e) {
+        console.warn('Smart Auto-Queue fetch error:', e);
+        if (autoPlayNext) {
+          setIsLoading(false);
+          setIsPlaying(false);
+        }
+      } finally {
+        isFetchingRadioRef.current = false;
+      }
+    },
+    [currentTrack, getSessionPlayedKeys, region]
+  );
+
+  // Play specific track by object (BUG 1 FIX: ZERO PREVIEW PRE-PLAY, ONLY FULL-LENGTH STREAMS)
+  const playTrack = useCallback(
+    async (track, queue) => {
+      if (!track) return;
+      const audio = audioRef.current;
+
+      // 1. Immediately update active track info and UI state
+      setCurrentTrack(track);
+      setIsPlaying(true);
+      setIsLoading(true); // Buffering spinner indicator while stream resolves
+      setCurrentTime(0);
+      setDuration(track.duration || 210);
+
+      // Reset A-B looper on new track
+      setLoopAState(null);
+      setLoopBState(null);
+      setIsLooping(false);
+
+      if (queue && Array.isArray(queue) && queue.length > 0) {
+        setPlaylistQueue(queue);
+      }
+
+      // Track session play history (last 40 played tracks FIFO + normalized keys)
+      const tKey = getTrackKey(track);
+      const dKey = getTrackDedupeKey(track);
+      sessionPlayedRef.current.add(track.id);
+      sessionPlayedRef.current.add(tKey);
+      sessionPlayedRef.current.add(dKey);
+
+      playedHistoryRef.current = [
+        { id: track.id, title: track.title, artist: track.artist, key: tKey, dedupeKey: dKey },
+        ...playedHistoryRef.current.filter((item) => item.id !== track.id && item.key !== tKey),
+      ].slice(0, 40);
+
+      // Add to recently played (deduplicated)
+      setRecentlyPlayed((prev) => {
+        const filtered = prev.filter((t) => t.id !== track.id);
+        return [track, ...filtered].slice(0, 25);
+      });
+
+      recordTrackPlay(track, 45, user?.id);
+
+      // Fetch real synced lyrics from LRCLIB concurrently
+      fetchSyncedLyrics(
+        track.artist,
+        track.title,
+        track.duration || 210
+      )
+        .then(({ syncedLyrics, plainLyrics }) => {
+          setCurrentTrack((prev) =>
+            prev.id === track.id
+              ? {
+                  ...prev,
+                  lyrics: syncedLyrics || [],
+                  plainLyrics: plainLyrics || null,
+                }
+              : prev
+          );
+        })
+        .catch(() => {});
+
+      // Check if upcoming queue needs proactive replenishment (< 3 remaining)
+      const effectiveQueue = queue && Array.isArray(queue) && queue.length > 0 ? queue : playlistQueue;
+      const currentIdx = effectiveQueue.findIndex((t) => t.id === track.id);
+      if (currentIdx !== -1 && effectiveQueue.length - (currentIdx + 1) < 3) {
+        triggerAutoQueue(track, false);
+      }
+
+      // 2. CRITICAL BUG 1 FIX: Resolve 100% Full-Length Audio Stream (>=90s)
+      // NEVER assign audio.src to 30s previewUrl first! Only assign audio.src once resolved.
+      audioEqualizer.resume();
+
+      try {
+        const fullStreamUrl = await resolveFullAudioStream(track);
+        const finalUrl = fullStreamUrl || track.audioUrl || track.previewUrl;
+
+        if (audio) {
+          audio.src = finalUrl;
+          audio.playbackRate = playbackSpeed;
+          audio.currentTime = 0;
+
+          if (crossfadeDuration > 0) {
+            audio.volume = 0;
+            audio
+              .play()
+              .then(() => {
+                setIsPlaying(true);
+                // Smooth Fade-In volume ramp over 1.5s
+                let step = 0;
+                const totalSteps = 15;
+                const stepMs = 100;
+                const timer = setInterval(() => {
+                  step++;
+                  if (audioRef.current && step <= totalSteps) {
+                    audioRef.current.volume = Math.min(volume, (step / totalSteps) * volume);
+                  } else {
+                    clearInterval(timer);
+                    if (audioRef.current) audioRef.current.volume = volume;
+                  }
+                }, stepMs);
+              })
+              .catch((err) => {
+                console.warn('Playback requires user gesture or stream error:', err);
+              });
+          } else {
+            audio.volume = volume;
+            audio
+              .play()
+              .then(() => {
+                setIsPlaying(true);
+              })
+              .catch((err) => {
+                console.warn('Playback requires user gesture or stream error:', err);
+              });
+          }
+        }
+
+        setCurrentTrack((prev) => (prev.id === track.id ? { ...prev, audioUrl: finalUrl } : prev));
+      } catch (err) {
+        console.warn('Stream resolution error:', err);
+        setIsLoading(false);
+      }
+    },
+    [playbackSpeed, volume, playlistQueue, user?.id, triggerAutoQueue]
+  );
+  playTrackRef.current = playTrack;
+
+  // Next Track with Smart Auto-Queue trigger (BUG 2 FIX: NEVER LOOP BACK TO START)
+  const handleNextTrack = useCallback(
+    (fromEnded = false) => {
+      const queue = playlistQueue.length > 0 ? playlistQueue : REAL_INITIAL_TRACKS;
+      const currentIndex = queue.findIndex((t) => t.id === currentTrack.id);
+
+      // Shuffle mode
+      if (isShuffle) {
+        const remaining = queue.filter((t, idx) => idx > currentIndex);
+        if (remaining.length > 0) {
+          const next = remaining[Math.floor(Math.random() * remaining.length)];
+          playTrack(next);
+          if (remaining.length < 3) {
+            triggerAutoQueue(next, false);
+          }
+        } else if (repeatMode === 'all') {
+          const randomTrack = queue[Math.floor(Math.random() * queue.length)];
+          playTrack(randomTrack);
+        } else {
+          // End of shuffle queue without repeat: NEVER loop back to 0.
+          // Trigger Infinite Radio and auto-play the next recommendation!
+          triggerAutoQueue(currentTrack, true);
+        }
+        return;
+      }
+
+      // Normal Sequential Progression
+      if (currentIndex >= 0 && currentIndex < queue.length - 1) {
+        const nextSong = queue[currentIndex + 1];
+        playTrack(nextSong);
+
+        // Proactively replenish if fewer than 3 upcoming tracks left
+        if (queue.length - (currentIndex + 2) < 3) {
+          triggerAutoQueue(nextSong, false);
+        }
+      } else if (repeatMode === 'all') {
+        // User explicitly turned on repeat all
+        playTrack(queue[0]);
+      } else {
+        // Reached end of queue without repeat! NEVER loop back to index 0.
+        // Advance forward into newly fetched Auto-Play recommendations!
+        triggerAutoQueue(currentTrack, true);
+      }
+    },
+    [playlistQueue, currentTrack, isShuffle, repeatMode, playTrack, triggerAutoQueue]
+  );
+  handleNextTrackRef.current = handleNextTrack;
+
+  // Insert track as next in queue
+  const playNextInQueue = useCallback((track) => {
+    if (!track) return;
+    setPlaylistQueue((prev) => {
+      const filtered = prev.filter((t) => t.id !== track.id);
+      const currIdx = filtered.findIndex((t) => t.id === currentTrack.id);
+      if (currIdx === -1) {
+        return [currentTrack, track, ...filtered];
+      }
+      const updated = [...filtered];
+      updated.splice(currIdx + 1, 0, track);
+      return updated;
+    });
+  }, [currentTrack.id]);
+
+  const moveQueueTrack = useCallback((fromIndex, toIndex) => {
+    setPlaylistQueue((prev) => {
+      if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) {
+        return prev;
+      }
+      const updated = [...prev];
+      const [moved] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, moved);
+      return updated;
+    });
+  }, []);
+
+  const removeQueueTrack = useCallback((trackId) => {
+    setPlaylistQueue((prev) => prev.filter((t) => t.id !== trackId));
+  }, []);
+
+  const clearQueue = useCallback(() => {
+    setPlaylistQueue((prev) => prev.filter((t) => t.id === currentTrack?.id));
+  }, [currentTrack?.id]);
+
+  // Previous Track
+  const handlePrevTrack = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio && audio.currentTime > 3) {
+      audio.currentTime = 0;
+      setCurrentTime(0);
+      return;
+    }
+
+    const queue = playlistQueue.length > 0 ? playlistQueue : REAL_INITIAL_TRACKS;
+    const currentIndex = queue.findIndex((t) => t.id === currentTrack.id);
+    const prevIndex = (currentIndex - 1 + queue.length) % queue.length;
+    const prevTrack = queue[prevIndex] || queue[0];
+    playTrack(prevTrack);
+  }, [playlistQueue, currentTrack.id, playTrack]);
+
+  // Seek
+  const seekTo = useCallback(
+    (seconds) => {
+      const audio = audioRef.current;
+      if (audio) {
+        const clamped = Math.max(0, Math.min(seconds, audio.duration || duration));
+        audio.currentTime = clamped;
+        setCurrentTime(clamped);
+      }
+    },
+    [duration]
+  );
+
+  // Playback Speed with Strict Pitch-Locking
+  const setPlaybackSpeed = useCallback((speed) => {
+    const val = Number(speed) || 1.0;
+    setPlaybackSpeedState(val);
+    if (audioRef.current) {
+      audioRef.current.preservesPitch = true;
+      audioRef.current.mozPreservesPitch = true;
+      audioRef.current.webkitPreservesPitch = true;
+      audioRef.current.playbackRate = val;
+    }
+  }, []);
+
+  // A-B Looper Controls
+  const setLoopA = useCallback((time) => {
+    const target = time !== undefined ? time : (audioRef.current?.currentTime || 0);
+    setLoopAState(Math.floor(target * 10) / 10);
+    setIsLooping(true);
+  }, []);
+
+  const setLoopB = useCallback((time) => {
+    const target = time !== undefined ? time : (audioRef.current?.currentTime || 0);
+    setLoopBState(Math.floor(target * 10) / 10);
+    setIsLooping(true);
+  }, []);
+
+  const clearLoop = useCallback(() => {
+    setLoopAState(null);
+    setLoopBState(null);
+    setIsLooping(false);
+  }, []);
+
+  const toggleLooping = useCallback(() => {
+    setIsLooping((prev) => !prev);
+  }, []);
+
+  // Web Audio Isolator Mode Switcher
+  const setIsolatorMode = useCallback((mode) => {
+    setIsolatorModeState(mode);
+    audioEqualizer.setIsolatorMode(mode);
+  }, []);
+
+  // Volume
+  const setVolume = useCallback((val) => {
+    const clamped = Math.max(0, Math.min(1, val));
+    setVolumeState(clamped);
+    if (audioRef.current) {
+      audioRef.current.volume = clamped;
+      audioRef.current.muted = clamped === 0;
+    }
+    setIsMuted(clamped === 0);
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    if (isMuted) {
+      setIsMuted(false);
+      if (audioRef.current) audioRef.current.volume = volume || 0.8;
+    } else {
+      setIsMuted(true);
+      if (audioRef.current) audioRef.current.volume = 0;
+    }
+  }, [isMuted, volume]);
+
+  // Toggle Like with Full Track Object Persistence
+  const toggleLike = useCallback(
+    (trackOrId) => {
+      const targetTrack =
+        typeof trackOrId === 'object'
+          ? trackOrId
+          : currentTrack.id === trackOrId
+          ? currentTrack
+          : REAL_INITIAL_TRACKS.find((t) => t.id === trackOrId) || {
+              id: trackOrId,
+              title: 'Liked Track',
+            };
+
+      setLikedTracks((prev) => {
+        const exists = prev.some((t) => t.id === targetTrack.id);
+        if (exists) {
+          return prev.filter((t) => t.id !== targetTrack.id);
+        } else {
+          return [targetTrack, ...prev];
+        }
+      });
+    },
+    [currentTrack]
+  );
+
+  // Time formatters
+  const formatTime = (seconds) => {
+    if (isNaN(seconds) || seconds < 0) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  const formatRemainingTime = (current, total) => {
+    const remaining = Math.max(0, (total || 0) - (current || 0));
+    return `-${formatTime(remaining)}`;
+  };
+
+  // Native Lockscreen Controls via MediaSession API
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    try {
+      navigator.mediaSession.metadata = new window.MediaMetadata({
+        title: currentTrack.title || 'Unknown Track',
+        artist: currentTrack.artist || 'Unknown Artist',
+        album: currentTrack.album || 'Octav',
+        artwork: [
+          {
+            src: currentTrack.cover || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=512&q=80',
+            sizes: '512x512',
+            type: 'image/jpeg',
+          },
+        ],
+      });
+
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+
+      navigator.mediaSession.setActionHandler('play', () => {
+        if (!isPlaying) togglePlayPause();
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        if (isPlaying) togglePlayPause();
+      });
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        handlePrevTrack();
+      });
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        handleNextTrack();
+      });
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime != null) {
+          seekTo(details.seekTime);
+        }
+      });
+    } catch (e) {
+      console.warn('MediaSession registration error:', e);
+    }
+  }, [currentTrack, isPlaying, togglePlayPause, handlePrevTrack, handleNextTrack, seekTo]);
+
+  return {
+    currentTrack,
+    isPlaying,
+    isLoading,
+    currentTime,
+    duration,
+    progress: duration > 0 ? currentTime / duration : 0,
+    volume,
+    isMuted,
+    isShuffle,
+    setIsShuffle,
+    repeatMode,
+    setRepeatMode,
+    playbackSpeed,
+    setPlaybackSpeed,
+    playlistQueue,
+    moveQueueTrack,
+    removeQueueTrack,
+    clearQueue,
+    isLiked,
+    likedTracks,
+    likedTrackIds,
+    recentlyPlayed,
+    togglePlayPause,
+    playTrack,
+    playNextInQueue,
+    nextTrack: handleNextTrack,
+    prevTrack: handlePrevTrack,
+    seekTo,
+    setVolume,
+    toggleMute,
+    toggleLike,
+    formatTime,
+    formatRemainingTime,
+
+    // Jam Studio Looper & Isolators
+    loopA,
+    loopB,
+    isLooping,
+    setLoopA,
+    setLoopB,
+    clearLoop,
+    toggleLooping,
+    isolatorMode,
+    setIsolatorMode,
+
+    // Crossfade & Auto-queue
+    crossfadeDuration,
+    setCrossfadeDuration,
+    triggerAutoQueue,
+  };
+}

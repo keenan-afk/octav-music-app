@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-canvas: #050507;
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    letter-spacing: -0.02em;
+    user-select: none;
+    -webkit-user-drag: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html, body {
+    background-color: var(--bg-canvas);
+    color: #f3f4f6;
+    font-family: var(--font-sans);
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+  }
+}
+
+/* Hide native scrollbars while preserving scroll functionality */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Optical Liquid Glass Sheen */
+.liquid-sheen-surface {
+  position: relative;
+  overflow: hidden;
+}
+
+.liquid-sheen-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(
+    320px circle at var(--mouse-x, -200px) var(--mouse-y, -200px),
+    rgba(255, 255, 255, 0.12),
+    transparent 65%
+  );
+  z-index: 1;
+  opacity: var(--sheen-opacity, 0);
+  transition: opacity 0.25s ease-out;
+}
+
+.liquid-sheen-surface:hover::before {
+  --sheen-opacity: 1;
+}
+
+/* Specular Rim Light Classes */
+.specular-rim-mobile {
+  box-shadow: 
+    inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -1px 0.5px 0 rgba(255, 255, 255, 0.08),
+    0 16px 40px rgba(0, 0, 0, 0.7);
+}
+
+.specular-rim-button {
+  box-shadow: 
+    inset 0 1px 0.8px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0.8px 0 rgba(0, 0, 0, 0.25),
+    0 10px 25px rgba(30, 215, 96, 0.4);
+}
+
+.specular-rim-pill {
+  box-shadow: 
+    inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 0.5px 0 rgba(255, 255, 255, 0.05),
+    0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+/* Marquee animation for long text */
+@keyframes marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: marquee 16s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+/* Real-Time Audio-Reactive Liquid Glass Pulse */
+:root {
+  --bass-pulse: 0;
+}
+
+.bass-reactive-rim {
+  transition: transform 0.08s ease-out, filter 0.08s ease-out;
+  transform: scale(calc(1 + var(--bass-pulse, 0) * 0.025));
+  filter: drop-shadow(0 0 calc(18px * var(--bass-pulse, 0)) rgba(30, 215, 96, calc(var(--bass-pulse, 0) * 0.45)));
+}
+
+.bass-reactive-ambient {
+  transition: opacity 0.08s ease-out, transform 0.08s ease-out;
+  opacity: calc(0.6 + var(--bass-pulse, 0) * 0.4);
+  transform: scale(calc(1 + var(--bass-pulse, 0) * 0.08));
+}
