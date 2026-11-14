@@ -98,9 +98,9 @@ export function LiquidSurface({
         background:
           'linear-gradient(145deg, rgba(22, 22, 28, 0.68) 0%, rgba(10, 10, 14, 0.52) 100%)',
         backdropFilter:
-          'url(#liquid-refraction) blur(36px) saturate(210%) brightness(1.06)',
+          'blur(28px) saturate(190%) brightness(1.05)',
         WebkitBackdropFilter:
-          'url(#liquid-refraction) blur(36px) saturate(210%) brightness(1.06)',
+          'blur(28px) saturate(190%) brightness(1.05)',
         boxShadow:
           'inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.45), inset 0 -1px 0.5px 0 rgba(255, 255, 255, 0.08), 0 16px 40px rgba(0, 0, 0, 0.7)',
         ...style,

@@ -14,7 +14,6 @@ import { LibraryView } from './components/LibraryView';
 import { SpatialAudioModal } from './components/SpatialAudioModal';
 import { ActionSheet } from './components/ActionSheet';
 import { CreatePlaylistModal } from './components/CreatePlaylistModal';
-import { NotificationPopover } from './components/NotificationPopover';
 import { ArtistProfileSheet } from './components/ArtistProfileSheet';
 import { ProfileDrawer } from './components/ProfileDrawer';
 import { HomeView } from './components/HomeView';
@@ -56,7 +55,6 @@ export function App() {
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
   const [actionTrack, setActionTrack] = useState(null);
   const [isCreatePlaylistOpen, setIsCreatePlaylistOpen] = useState(false);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isPracticeStudioOpen, setIsPracticeStudioOpen] = useState(false);
   const [isAudioEQOpen, setIsAudioEQOpen] = useState(false);
   const [isLyricsShareOpen, setIsLyricsShareOpen] = useState(false);
@@ -206,7 +204,7 @@ export function App() {
           cover: audio.likedTracks[0]?.cover || null,
           trackCount: audio.likedTracks.length,
           curator: 'You',
-          description: 'All your favorite songs saved permanently in liquid obsidian.',
+          description: 'All your favorite songs saved permanently in your library.',
           isPinned: true,
           tracks: audio.likedTracks,
         },
@@ -331,8 +329,8 @@ export function App() {
         />
       </div>
 
-      {/* Mobile Shell: Locked Viewport max-w-[430px] with Sleek Device Frame */}
-      <div className="relative w-full max-w-[430px] h-[100dvh] sm:h-[94dvh] max-h-[920px] bg-[#050507] sm:rounded-[52px] sm:border-[10px] sm:border-[#16161c] sm:ring-1 sm:ring-white/10 sm:shadow-[0_30px_90px_rgba(0,0,0,0.95)] overflow-hidden flex flex-col z-10">
+      {/* Mobile Shell: Full viewport on mobile, locked max-w-[430px] with Sleek Device Frame on desktop */}
+      <div className="relative w-full max-w-full sm:max-w-[430px] h-[100dvh] sm:h-[94dvh] max-h-none sm:max-h-[920px] bg-[#050507] sm:rounded-[52px] sm:border-[10px] sm:border-[#16161c] sm:ring-1 sm:ring-white/10 sm:shadow-[0_30px_90px_rgba(0,0,0,0.95)] overflow-hidden flex flex-col z-10">
         {/* Dynamic Ambient Color Bleed Canvas behind UI (z-0) */}
         <AmbientCanvas currentTrack={audio.currentTrack} />
 
@@ -411,7 +409,6 @@ export function App() {
               recentlyPlayed={audio.recentlyPlayed}
               onSelectTrack={audio.playTrack}
               onOpenPlaylist={handleOpenPlaylist}
-              onOpenNotifications={() => setIsNotificationsOpen(true)}
               onProfileClick={() => setIsProfileDrawerOpen(true)}
               onShowToast={showToast}
               onOpenArtist={handleOpenArtist}
@@ -527,15 +524,6 @@ export function App() {
           isOpen={isCreatePlaylistOpen}
           onClose={() => setIsCreatePlaylistOpen(false)}
           onCreate={handleCreatePlaylist}
-        />
-
-        {/* Notification & What's New Popover */}
-        <NotificationPopover
-          isOpen={isNotificationsOpen}
-          onClose={() => setIsNotificationsOpen(false)}
-          currentTrack={audio.currentTrack}
-          queue={audio.playlistQueue}
-          onSelectTrack={audio.playTrack}
         />
 
         {/* Apple visionOS Spatial Audio & 5-Band Acoustic EQ Modal */}

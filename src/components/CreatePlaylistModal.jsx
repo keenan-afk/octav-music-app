@@ -56,7 +56,7 @@ export function CreatePlaylistModal({ isOpen, onClose, onCreate }) {
           style={{
             background:
               'linear-gradient(145deg, rgba(26, 26, 36, 0.94) 0%, rgba(12, 12, 18, 0.92) 100%)',
-            backdropFilter: 'url(#liquid-refraction) blur(40px) saturate(210%) brightness(1.06)',
+            backdropFilter: 'blur(30px) saturate(190%) brightness(1.05)',
             boxShadow:
               'inset 0 1px 1px 0 rgba(255, 255, 255, 0.5), 0 20px 50px rgba(0, 0, 0, 0.85)',
           }}

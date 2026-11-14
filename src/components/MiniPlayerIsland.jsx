@@ -58,14 +58,17 @@ export function MiniPlayerIsland({
   if (!currentTrack) return null;
 
   return (
-    <div className="absolute bottom-[78px] inset-x-2 z-40 select-none pointer-events-auto">
+    <div
+      className="absolute inset-x-2 z-40 select-none pointer-events-auto"
+      style={{ bottom: 'calc(max(0.75rem, env(safe-area-inset-bottom)) + 72px)' }}
+    >
       <LiquidSurface
         onClick={onExpandSheet}
         className="h-14 rounded-2xl cursor-pointer active:scale-[0.99] transition-transform duration-150"
         style={{
           background:
             'linear-gradient(145deg, rgba(22, 22, 28, 0.82) 0%, rgba(10, 10, 14, 0.72) 100%)',
-          backdropFilter: 'url(#liquid-refraction) blur(36px) saturate(210%) brightness(1.06)',
+          backdropFilter: 'blur(28px) saturate(190%) brightness(1.05)',
           boxShadow:
             'inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.45), inset 0 -1px 0.5px 0 rgba(255, 255, 255, 0.08), 0 18px 45px rgba(0, 0, 0, 0.85)',
         }}

@@ -79,7 +79,7 @@ export function Toast({ toast, onDismiss }) {
         style={{
           background:
             'linear-gradient(145deg, rgba(28, 28, 36, 0.96) 0%, rgba(14, 14, 20, 0.94) 100%)',
-          backdropFilter: 'url(#liquid-refraction) blur(32px) saturate(220%) brightness(1.12)',
+          backdropFilter: 'blur(28px) saturate(190%) brightness(1.05)',
           boxShadow:
             'inset 0 1px 1px 0 rgba(255, 255, 255, 0.5), 0 12px 36px rgba(0, 0, 0, 0.85)',
         }}

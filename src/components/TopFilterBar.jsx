@@ -1,5 +1,4 @@
 import React from 'react';
-import { Bell } from 'lucide-react';
 import { LiquidSurface } from './LiquidGlassFilter';
 import { useAuth } from '../context/AuthContext';
 
@@ -110,9 +109,9 @@ export function TopFilterBar({
         </div>
       </div>
 
-      {/* Right: Region Switcher & Notifications */}
+      {/* Right: Region Switcher */}
       <div className="flex items-center gap-2 flex-shrink-0">
-        {/* Sleek Liquid Glass Region Switcher Pill */}
+        {/* Region Switcher Pill */}
         <button
           onClick={onToggleRegion}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/[0.14] active:scale-95 transition-all cursor-pointer group shadow-sm bg-white/[0.06] hover:bg-white/[0.12]"
@@ -122,16 +121,6 @@ export function TopFilterBar({
             {region === 'ID' ? '🇮🇩 ID' : '🌐 Global'}
           </span>
           <span className="w-1.5 h-1.5 rounded-full bg-[#1ed760] group-hover:scale-125 transition-transform" />
-        </button>
-
-        {/* Notifications Bell */}
-        <button
-          onClick={onOpenNotifications}
-          className="w-8 h-8 rounded-full flex items-center justify-center text-white/70 hover:text-white active:scale-95 transition-all cursor-pointer relative bg-white/[0.04] hover:bg-white/[0.08]"
-          title="What's New & Updates"
-        >
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#1ed760]" />
         </button>
       </div>
     </div>

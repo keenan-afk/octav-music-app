@@ -170,7 +170,7 @@ export function ActionSheet({
         style={{
           background:
             'linear-gradient(145deg, rgba(24, 24, 32, 0.94) 0%, rgba(12, 12, 18, 0.9) 100%)',
-          backdropFilter: 'url(#liquid-refraction) blur(40px) saturate(220%) brightness(1.08)',
+          backdropFilter: 'blur(32px) saturate(190%) brightness(1.05)',
           boxShadow:
             'inset 0 1px 1px 0 rgba(255, 255, 255, 0.5), 0 -15px 45px rgba(0, 0, 0, 0.9)',
         }}

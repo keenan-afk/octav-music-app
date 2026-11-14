@@ -26,7 +26,6 @@ export function HomeView({
   recentlyPlayed = [],
   onSelectTrack,
   onOpenPlaylist,
-  onOpenNotifications,
   onProfileClick,
   onShowToast,
   onOpenArtist,
@@ -229,7 +228,6 @@ export function HomeView({
         onSelectFilter={setActiveFilter}
         region={region}
         onToggleRegion={onToggleRegion}
-        onOpenNotifications={onOpenNotifications}
         onProfileClick={onProfileClick}
       />
 

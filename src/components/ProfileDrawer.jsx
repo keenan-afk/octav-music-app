@@ -165,6 +165,7 @@ export function ProfileDrawer({
       try {
         ['octav_custom_playlists', 'octav_liked_tracks', 'octav_recent_tracks', 'octav_region',
          'octav_user_name', 'octav_audio_quality', 'octav_audio_eq_curve', 'octav_audio_eq_preset',
+         'octav_listening_stats',
          'spotify_liquid_custom_playlists', 'spotify_liquid_liked_tracks', 'spotify_liquid_recent_tracks', 'spotify_liquid_region'
         ].forEach((k) => localStorage.removeItem(k));
       } catch (e) {}
@@ -202,7 +203,7 @@ export function ProfileDrawer({
           transform: 'translateX(-100%)',
           background:
             'linear-gradient(145deg, rgba(20, 20, 26, 0.98) 0%, rgba(10, 10, 14, 0.96) 100%)',
-          backdropFilter: 'url(#liquid-refraction) blur(40px) saturate(210%) brightness(1.08)',
+          backdropFilter: 'blur(32px) saturate(190%) brightness(1.05)',
           boxShadow:
             'inset 0 1px 1px 0 rgba(255, 255, 255, 0.4), 15px 0 50px rgba(0, 0, 0, 0.95)',
         }}

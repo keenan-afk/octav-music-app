@@ -105,7 +105,7 @@ export function AvatarUploadModal({ isOpen, onClose, currentAvatar, onSaveAvatar
         className="relative w-full max-w-[360px] rounded-[32px] p-5 text-white z-10 flex flex-col gap-4 border border-white/20 shadow-[0_25px_60px_rgba(0,0,0,0.9)] overflow-hidden"
         style={{
           background: 'linear-gradient(150deg, rgba(22, 22, 28, 0.96) 0%, rgba(10, 10, 14, 0.98) 100%)',
-          backdropFilter: 'url(#liquid-refraction) blur(40px) saturate(200%) brightness(1.05)',
+          backdropFilter: 'blur(32px) saturate(190%) brightness(1.05)',
           boxShadow: 'inset 0 1px 1px 0 rgba(255, 255, 255, 0.4), 0 25px 50px rgba(0, 0, 0, 0.95)',
         }}
       >

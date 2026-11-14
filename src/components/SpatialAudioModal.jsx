@@ -133,7 +133,7 @@ export function SpatialAudioModal({ isOpen, onClose, isPlaying }) {
         style={{
           background:
             'linear-gradient(145deg, rgba(24, 24, 32, 0.88) 0%, rgba(12, 12, 18, 0.8) 100%)',
-          backdropFilter: 'url(#liquid-refraction) blur(40px) saturate(220%) brightness(1.08)',
+          backdropFilter: 'blur(32px) saturate(190%) brightness(1.05)',
           boxShadow:
             'inset 0 1px 1px 0 rgba(255, 255, 255, 0.5), inset 0 -1px 1px 0 rgba(255, 255, 255, 0.08), 0 25px 60px rgba(0, 0, 0, 0.95)',
         }}

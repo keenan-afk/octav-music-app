@@ -31,7 +31,10 @@ export function FloatingTabDock({ activeTab, onSelectTab }) {
   }, [activeIndex]);
 
   return (
-    <div className="absolute bottom-2 inset-x-3 z-40 select-none pointer-events-auto">
+    <div
+      className="absolute inset-x-3 z-40 select-none pointer-events-auto"
+      style={{ bottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+    >
       <LiquidSurface
         rounded="rounded-full"
         className="h-16"
@@ -39,7 +42,7 @@ export function FloatingTabDock({ activeTab, onSelectTab }) {
         style={{
           background:
             'linear-gradient(145deg, rgba(22, 22, 28, 0.72) 0%, rgba(10, 10, 14, 0.58) 100%)',
-          backdropFilter: 'url(#liquid-refraction) blur(36px) saturate(210%) brightness(1.06)',
+          backdropFilter: 'blur(28px) saturate(190%) brightness(1.05)',
           boxShadow:
             'inset 0 1px 0.8px 0 rgba(255, 255, 255, 0.45), inset 0 -1px 0.8px 0 rgba(255, 255, 255, 0.08), 0 20px 45px rgba(0, 0, 0, 0.85)',
         }}

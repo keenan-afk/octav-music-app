@@ -11,45 +11,49 @@ import {
 import { syncUserDataToCloud } from '../services/supabaseClient';
 import { recordTrackPlay } from '../services/statsService';
 
-const STORAGE_KEY_LIKED = 'spotify_liquid_liked_tracks';
-const STORAGE_KEY_RECENT = 'spotify_liquid_recent_tracks';
-const STORAGE_KEY_CROSSFADE = 'spotify_liquid_crossfade';
+const STORAGE_KEY_LIKED = 'octav_liked_tracks';
+const STORAGE_KEY_RECENT = 'octav_recent_tracks';
+const STORAGE_KEY_CROSSFADE = 'octav_crossfade';
+const LEGACY_STORAGE_KEY_LIKED = 'spotify_liquid_liked_tracks';
+const LEGACY_STORAGE_KEY_RECENT = 'spotify_liquid_recent_tracks';
+const LEGACY_STORAGE_KEY_CROSSFADE = 'spotify_liquid_crossfade';
 
 export function useAudioController(user = null, region = 'ID') {
   const getLikedKey = () => (user?.id ? `octav_user_${user.id}_liked_tracks` : STORAGE_KEY_LIKED);
-  const getLegacyLikedKey = () => (user?.id ? `vetra_user_${user.id}_liked_tracks` : null);
+  const getLegacyLikedKey = () => (user?.id ? `vetra_user_${user.id}_liked_tracks` : LEGACY_STORAGE_KEY_LIKED);
   const getRecentKey = () => (user?.id ? `octav_user_${user.id}_recent_tracks` : STORAGE_KEY_RECENT);
-  const getLegacyRecentKey = () => (user?.id ? `vetra_user_${user.id}_recent_tracks` : null);
+  const getLegacyRecentKey = () => (user?.id ? `vetra_user_${user.id}_recent_tracks` : LEGACY_STORAGE_KEY_RECENT);
 
-  // Load saved liked tracks and recently played from localStorage
+  // Load saved liked tracks - strictly empty for brand new guests
   const [likedTracks, setLikedTracks] = useState(() => {
     try {
       const key = user?.id ? `octav_user_${user.id}_liked_tracks` : STORAGE_KEY_LIKED;
-      const legacyKey = user?.id ? `vetra_user_${user.id}_liked_tracks` : null;
-      const saved = localStorage.getItem(key) || (legacyKey ? localStorage.getItem(legacyKey) : null);
+      const legacyKey = user?.id ? `vetra_user_${user.id}_liked_tracks` : LEGACY_STORAGE_KEY_LIKED;
+      const saved = localStorage.getItem(key) || localStorage.getItem(legacyKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch (e) {
       console.warn('Failed to read liked tracks from storage:', e);
     }
-    return [REAL_INITIAL_TRACKS[0], REAL_INITIAL_TRACKS[2]];
+    return [];
   });
 
+  // Load saved recently played - strictly empty for brand new guests
   const [recentlyPlayed, setRecentlyPlayed] = useState(() => {
     try {
       const key = user?.id ? `octav_user_${user.id}_recent_tracks` : STORAGE_KEY_RECENT;
-      const legacyKey = user?.id ? `vetra_user_${user.id}_recent_tracks` : null;
-      const saved = localStorage.getItem(key) || (legacyKey ? localStorage.getItem(legacyKey) : null);
+      const legacyKey = user?.id ? `vetra_user_${user.id}_recent_tracks` : LEGACY_STORAGE_KEY_RECENT;
+      const saved = localStorage.getItem(key) || localStorage.getItem(legacyKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch (e) {
       console.warn('Failed to read recent tracks from storage:', e);
     }
-    return REAL_INITIAL_TRACKS.slice(0, 4);
+    return [];
   });
 
   // Re-sync liked tracks and recently played when user changes (Login / Logout / Switch)
@@ -59,15 +63,15 @@ export function useAudioController(user = null, region = 'ID') {
     const rKey = getRecentKey();
     const legRKey = getLegacyRecentKey();
     try {
-      const savedLiked = localStorage.getItem(lKey) || (legLKey ? localStorage.getItem(legLKey) : null);
+      const savedLiked = localStorage.getItem(lKey) || localStorage.getItem(legLKey);
       if (savedLiked) {
         const parsed = JSON.parse(savedLiked);
         if (Array.isArray(parsed)) setLikedTracks(parsed);
       } else if (!user) {
-        setLikedTracks([REAL_INITIAL_TRACKS[0], REAL_INITIAL_TRACKS[2]]);
+        setLikedTracks([]);
       }
 
-      const savedRecent = localStorage.getItem(rKey) || (legRKey ? localStorage.getItem(legRKey) : null);
+      const savedRecent = localStorage.getItem(rKey) || localStorage.getItem(legRKey);
       if (savedRecent) {
         const parsed = JSON.parse(savedRecent);
         if (Array.isArray(parsed)) setRecentlyPlayed(parsed);
@@ -106,7 +110,6 @@ export function useAudioController(user = null, region = 'ID') {
   const [isolatorMode, setIsolatorModeState] = useState('normal');
 
   const audioRef = useRef(null);
-  const rafRef = useRef(null);
   const loopRef = useRef({ loopA, loopB, isLooping });
   loopRef.current = { loopA, loopB, isLooping };
 
@@ -261,42 +264,8 @@ export function useAudioController(user = null, region = 'ID') {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
       audio.removeEventListener('error', handleError);
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, []);
-
-  // RequestAnimationFrame loop for ultra-smooth 60fps seek bar sync + Real-time Audio-Reactive shader drive
-  const updateProgressLoop = useCallback(() => {
-    const audio = audioRef.current;
-    if (audio && !audio.paused) {
-      setCurrentTime(audio.currentTime);
-
-      // A-B Looper frame check for instant sub-frame precision
-      const { loopA, loopB, isLooping } = loopRef.current;
-      if (isLooping && loopA !== null && loopB !== null && audio.currentTime >= loopB) {
-        audio.currentTime = loopA;
-        setCurrentTime(loopA);
-      }
-
-      // Drive --bass-pulse CSS variable dynamically
-      const bassVal = audioEqualizer.getBassEnergy();
-      document.documentElement.style.setProperty('--bass-pulse', bassVal.toFixed(3));
-
-      rafRef.current = requestAnimationFrame(updateProgressLoop);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isPlaying) {
-      rafRef.current = requestAnimationFrame(updateProgressLoop);
-    } else {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      document.documentElement.style.setProperty('--bass-pulse', '0');
-    }
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, [isPlaying, updateProgressLoop]);
 
   // Play / Pause Toggle
   const togglePlayPause = useCallback(() => {

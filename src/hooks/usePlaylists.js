@@ -82,7 +82,7 @@ export function usePlaylists(user = null) {
     const newPlaylist = {
       id: `custom-pl-${Date.now()}`,
       title: trimmedTitle || 'My Playlist',
-      description: description.trim() || 'Created in Liquid Glass',
+      description: description.trim() || 'Curated on Octav',
       curator: 'You',
       isCustom: true,
       tracks: [],

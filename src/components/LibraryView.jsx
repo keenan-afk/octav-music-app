@@ -40,7 +40,7 @@ export function LibraryView({
     cover: likedTracks[0]?.cover || '',
     trackCount: likedTracks.length,
     curator: 'You',
-    description: 'All your favorite songs saved permanently in liquid obsidian.',
+    description: 'All your favorite songs saved permanently in your library.',
     isPinned: true,
     tracks: likedTracks,
   }), [likedTracks]);
