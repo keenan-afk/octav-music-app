@@ -12,17 +12,23 @@ export class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('LiquidGlass Player Error Caught:', error, errorInfo);
+    console.error('Octav Player Error Caught:', error, errorInfo);
   }
 
   handleReset = () => {
     try {
-      ['octav_liked_tracks', 'octav_recent_tracks', 'octav_custom_playlists',
-       'spotify_liquid_liked_tracks', 'spotify_liquid_recent_tracks', 'spotify_liquid_custom_playlists'
+      [
+        'octav_liked_tracks',
+        'octav_recent_tracks',
+        'octav_custom_playlists',
+        'spotify_liquid_liked_tracks',
+        'spotify_liquid_recent_tracks',
+        'spotify_liquid_custom_playlists',
       ].forEach((k) => localStorage.removeItem(k));
     } catch (e) {
       console.warn('Failed clearing cache:', e);
     }
+    this.setState({ hasError: false, error: null });
     window.location.reload();
   };
 

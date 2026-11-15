@@ -341,39 +341,41 @@ export function App() {
         </div>
 
         {/* Full-Screen "Now Playing" Sheet */}
-        <NowPlayingSheet
-          isOpen={isExpanded}
-          isExpanded={isExpanded}
-          onClose={() => setIsExpanded(false)}
-          currentTrack={audio.currentTrack}
-          isPlaying={audio.isPlaying}
-          currentTime={audio.currentTime}
-          duration={audio.duration}
-          progress={audio.progress}
-          isLiked={audio.isLiked}
-          isShuffle={audio.isShuffle}
-          setIsShuffle={audio.setIsShuffle}
-          repeatMode={audio.repeatMode}
-          setRepeatMode={audio.setRepeatMode}
-          onTogglePlayPause={audio.togglePlayPause}
-          onNextTrack={audio.nextTrack}
-          onPrevTrack={audio.prevTrack}
-          onSeekTo={audio.seekTo}
-          onToggleLike={audio.toggleLike}
-          onOpenSpatialAudio={() => setIsSpatialModalOpen(true)}
-          onOpenEQ={() => setIsAudioEQOpen(true)}
-          onOpenStudio={() => setIsPracticeStudioOpen(true)}
-          onOpenLyricsShare={() => setIsLyricsShareOpen(true)}
-          onOpenArtist={handleOpenArtist}
-          onOpenQueue={() => setIsQueueOpen(true)}
-          loopA={audio.loopA}
-          loopB={audio.loopB}
-          onOpenActionSheet={openActionSheet}
-          onShowToast={showToast}
-          formatTime={audio.formatTime}
-          formatRemainingTime={audio.formatRemainingTime}
-          activePlaylistTitle={currentActivePlaylist?.title || "Now Playing"}
-        />
+        {audio.currentTrack && (
+          <NowPlayingSheet
+            isOpen={isExpanded}
+            isExpanded={isExpanded}
+            onClose={() => setIsExpanded(false)}
+            currentTrack={audio.currentTrack}
+            isPlaying={audio.isPlaying}
+            currentTime={audio.currentTime}
+            duration={audio.duration}
+            progress={audio.progress}
+            isLiked={audio.isLiked}
+            isShuffle={audio.isShuffle}
+            setIsShuffle={audio.setIsShuffle}
+            repeatMode={audio.repeatMode}
+            setRepeatMode={audio.setRepeatMode}
+            onTogglePlayPause={audio.togglePlayPause}
+            onNextTrack={audio.nextTrack}
+            onPrevTrack={audio.prevTrack}
+            onSeekTo={audio.seekTo}
+            onToggleLike={audio.toggleLike}
+            onOpenSpatialAudio={() => setIsSpatialModalOpen(true)}
+            onOpenEQ={() => setIsAudioEQOpen(true)}
+            onOpenStudio={() => setIsPracticeStudioOpen(true)}
+            onOpenLyricsShare={() => setIsLyricsShareOpen(true)}
+            onOpenArtist={handleOpenArtist}
+            onOpenQueue={() => setIsQueueOpen(true)}
+            loopA={audio.loopA}
+            loopB={audio.loopB}
+            onOpenActionSheet={openActionSheet}
+            onShowToast={showToast}
+            formatTime={audio.formatTime}
+            formatRemainingTime={audio.formatRemainingTime}
+            activePlaylistTitle={currentActivePlaylist?.title || "Now Playing"}
+          />
+        )}
 
         {/* Artist Profile & Discography Sheet */}
         <ArtistProfileSheet
@@ -392,26 +394,28 @@ export function App() {
         />
 
         {/* Octav Action Sheet (Context Menu) */}
-        <ActionSheet
-          isOpen={isActionSheetOpen}
-          onClose={() => setIsActionSheetOpen(false)}
-          track={actionTrack || audio.currentTrack}
-          isLiked={actionTrack ? audio.likedTrackIds.has(actionTrack.id) : audio.isLiked}
-          onToggleLike={audio.toggleLike}
-          onOpenArtist={handleOpenArtist}
-          onPlayNext={audio.playNextInQueue}
-          onAddToPlaylist={playlistsManager.addTrackToPlaylist}
-          onOpenCreatePlaylist={() => {
-            setIsActionSheetOpen(false);
-            setIsCreatePlaylistOpen(true);
-          }}
-          customPlaylists={playlistsManager.customPlaylists}
-          sleepTimerRemaining={sleepTimerRemainingText}
-          onSetSleepTimer={handleSetSleepTimer}
-          playbackSpeed={audio.playbackSpeed}
-          onChangePlaybackSpeed={audio.setPlaybackSpeed}
-          onShowToast={showToast}
-        />
+        {(actionTrack || audio.currentTrack) && (
+          <ActionSheet
+            isOpen={isActionSheetOpen}
+            onClose={() => setIsActionSheetOpen(false)}
+            track={actionTrack || audio.currentTrack}
+            isLiked={actionTrack ? audio.likedTrackIds.has(actionTrack.id) : audio.isLiked}
+            onToggleLike={audio.toggleLike}
+            onOpenArtist={handleOpenArtist}
+            onPlayNext={audio.playNextInQueue}
+            onAddToPlaylist={playlistsManager.addTrackToPlaylist}
+            onOpenCreatePlaylist={() => {
+              setIsActionSheetOpen(false);
+              setIsCreatePlaylistOpen(true);
+            }}
+            customPlaylists={playlistsManager.customPlaylists}
+            sleepTimerRemaining={sleepTimerRemainingText}
+            onSetSleepTimer={handleSetSleepTimer}
+            playbackSpeed={audio.playbackSpeed}
+            onChangePlaybackSpeed={audio.setPlaybackSpeed}
+            onShowToast={showToast}
+          />
+        )}
 
         {/* Create Playlist Modal */}
         <CreatePlaylistModal

@@ -11,7 +11,7 @@ import { SmartArtwork } from './SmartArtwork';
  * - Active animated equalizer bars when playing
  */
 export function QuickJumpGrid({
-  items,
+  items = [],
   currentTrack,
   isPlaying,
   onSelectTrack,
@@ -19,7 +19,7 @@ export function QuickJumpGrid({
 }) {
   return (
     <div className="grid grid-cols-2 gap-2 px-4 py-2">
-      {items.slice(0, 8).map((item) => {
+      {(items || []).slice(0, 8).map((item) => {
         const isCurrentSong = currentTrack && item.id === currentTrack.id;
         const isLikedCard = item.isLikedCollection || item.id === 'pl-liked';
 

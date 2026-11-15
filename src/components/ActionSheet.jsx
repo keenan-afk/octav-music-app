@@ -82,7 +82,7 @@ export function ActionSheet({
     }
   }, [isOpen]);
 
-  if (!track && !isOpen) return null;
+  if (!track) return null;
 
   const handleShare = async () => {
     const shareText = `🎵 Listening to "${track.title}" by ${track.artist} on Octav`;

@@ -656,7 +656,7 @@ export function useAudioController(user = null, region = 'ID') {
       const targetTrack =
         typeof trackOrId === 'object'
           ? trackOrId
-          : currentTrack.id === trackOrId
+          : currentTrack?.id === trackOrId
           ? currentTrack
           : REAL_INITIAL_TRACKS.find((t) => t.id === trackOrId) || {
               id: trackOrId,

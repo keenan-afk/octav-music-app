@@ -164,6 +164,7 @@ export function NowPlayingSheet({
 
   const handleLikeClick = (e) => {
     e.stopPropagation();
+    if (!currentTrack) return;
     onToggleLike(currentTrack.id);
     if (heartRef.current) {
       gsap.fromTo(
@@ -175,6 +176,7 @@ export function NowPlayingSheet({
   };
 
   const handleShareClick = async () => {
+    if (!currentTrack) return;
     const shareText = `🎵 Listening to "${currentTrack.title}" by ${currentTrack.artist} on Octav`;
     if (navigator.share) {
       try {
@@ -193,6 +195,8 @@ export function NowPlayingSheet({
 
   const displayTime = isScrubbing ? scrubValue : currentTime;
   const currentRatio = duration > 0 ? displayTime / duration : 0;
+
+  if (!currentTrack) return null;
 
   return (
     <div
@@ -267,11 +271,11 @@ export function NowPlayingSheet({
             }}
           >
             <SmartArtwork
-              src={currentTrack.cover}
-              title={currentTrack.title}
-              artist={currentTrack.artist}
+              src={currentTrack?.cover}
+              title={currentTrack?.title}
+              artist={currentTrack?.artist}
               className="w-full h-full object-cover"
-              alt={currentTrack.title}
+              alt={currentTrack?.title}
             />
             {/* Liquid Glaze Rim Sheen */}
             <div
@@ -288,14 +292,14 @@ export function NowPlayingSheet({
         <div className="w-full max-w-[340px] flex items-center justify-between mb-4 mt-1">
           <div className="min-w-0 flex-1 pr-3">
             <h1 className="text-xl font-extrabold text-white truncate tracking-tight">
-              {currentTrack.title}
+              {currentTrack?.title}
             </h1>
             <p
-              onClick={() => onOpenArtist?.(currentTrack.artist)}
+              onClick={() => onOpenArtist?.(currentTrack?.artist)}
               className="text-sm font-semibold text-white/60 hover:text-white hover:underline truncate mt-0.5 cursor-pointer transition-colors inline-block"
-              title={`View ${currentTrack.artist} profile`}
+              title={`View ${currentTrack?.artist} profile`}
             >
-              {currentTrack.artist}
+              {currentTrack?.artist}
             </p>
           </div>
 
@@ -532,7 +536,7 @@ export function NowPlayingSheet({
               ref={lyricsScrollRef}
               className="max-h-[190px] overflow-y-auto scrollbar-none flex flex-col gap-3.5 py-2"
             >
-              {currentTrack.lyrics && currentTrack.lyrics.length > 0 ? (
+              {currentTrack?.lyrics && currentTrack.lyrics.length > 0 ? (
                 currentTrack.lyrics.map((line, idx) => {
                   const nextTime = currentTrack.lyrics[idx + 1]?.time ?? Infinity;
                   const isLineActive = currentTime >= line.time && currentTime < nextTime;
@@ -562,16 +566,16 @@ export function NowPlayingSheet({
 
         {/* About the Artist Glass Card (Clickable to Artist Profile) */}
         <div
-          onClick={() => onOpenArtist?.(currentTrack.artist)}
+          onClick={() => onOpenArtist?.(currentTrack?.artist)}
           className="w-full max-w-[340px] mt-4 mb-8 cursor-pointer group active:scale-[0.99] transition-transform"
-          title={`View ${currentTrack.artist} profile`}
+          title={`View ${currentTrack?.artist} profile`}
         >
           <LiquidSurface className="rounded-2xl overflow-hidden border border-white/10 group-hover:border-white/20 transition-colors">
             <div className="relative h-28 w-full overflow-hidden">
               <SmartArtwork
-                src={currentTrack.cover}
-                title={currentTrack.title}
-                artist={currentTrack.artist}
+                src={currentTrack?.cover}
+                title={currentTrack?.title}
+                artist={currentTrack?.artist}
                 className="w-full h-full object-cover filter brightness-75 group-hover:scale-105 transition-transform duration-500"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-[#050507] via-transparent to-transparent" />
@@ -583,16 +587,16 @@ export function NowPlayingSheet({
             <div className="p-4 pt-1">
               <div className="flex items-center justify-between mb-2">
                 <div>
-                  <h3 className="text-sm font-extrabold text-white group-hover:text-[#1ed760] transition-colors">{currentTrack.artist}</h3>
+                  <h3 className="text-sm font-extrabold text-white group-hover:text-[#1ed760] transition-colors">{currentTrack?.artist}</h3>
                   <p className="text-xs text-white/50 font-medium">
-                    {currentTrack.monthlyListeners || '3,410,200'} monthly listeners
+                    {currentTrack?.monthlyListeners || '3,410,200'} monthly listeners
                   </p>
                 </div>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsFollowing((prev) => !prev);
-                    onShowToast?.(!isFollowing ? `Followed ${currentTrack.artist}` : `Unfollowed ${currentTrack.artist}`);
+                    onShowToast?.(!isFollowing ? `Followed ${currentTrack?.artist}` : `Unfollowed ${currentTrack?.artist}`);
                   }}
                   className={`px-3.5 py-1 text-xs font-bold rounded-full border transition-all cursor-pointer ${
                     isFollowing
@@ -604,8 +608,8 @@ export function NowPlayingSheet({
                 </button>
               </div>
               <p className="text-xs text-white/60 leading-relaxed font-medium line-clamp-3">
-                {currentTrack.artistBio ||
-                  `Explore full discography, top hits, and albums by ${currentTrack.artist} on Octav.`}
+                {currentTrack?.artistBio ||
+                  `Explore full discography, top hits, and albums by ${currentTrack?.artist} on Octav.`}
               </p>
             </div>
           </LiquidSurface>

@@ -8,7 +8,9 @@ import { SmartArtwork } from './SmartArtwork';
  * with 148x148 rounded-xl cover art, subtle optical glass rim reflections,
  * SmartArtwork auto-recovery, and tight 2-line muted captions.
  */
-export function HorizontalShelf({ title, items, onSelectItem, onOpenArtist }) {
+export function HorizontalShelf({ title, items = [], onSelectItem, onOpenArtist }) {
+  if (!items || items.length === 0) return null;
+
   return (
     <div className="py-3">
       {/* Section Header */}
