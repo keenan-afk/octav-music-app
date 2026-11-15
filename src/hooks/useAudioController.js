@@ -79,17 +79,17 @@ export function useAudioController(user = null, region = 'ID') {
     } catch (e) {}
   }, [user?.id]);
 
-  const [currentTrack, setCurrentTrack] = useState(REAL_INITIAL_TRACKS[0]);
+  const [currentTrack, setCurrentTrack] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(REAL_INITIAL_TRACKS[0].duration);
+  const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(0.8);
   const [isMuted, setIsMuted] = useState(false);
   const [isShuffle, setIsShuffle] = useState(false);
   const [repeatMode, setRepeatMode] = useState('off'); // 'off' | 'all' | 'one'
   const [playbackSpeed, setPlaybackSpeedState] = useState(1.0);
   const [isLoading, setIsLoading] = useState(false);
-  const [playlistQueue, setPlaylistQueue] = useState(REAL_INITIAL_TRACKS);
+  const [playlistQueue, setPlaylistQueue] = useState([]);
 
   // A-B Looper State
   const [loopA, setLoopAState] = useState(null);
@@ -161,7 +161,7 @@ export function useAudioController(user = null, region = 'ID') {
 
   // Derived set of liked track IDs
   const likedTrackIds = new Set(likedTracks.map((t) => t.id));
-  const isLiked = likedTrackIds.has(currentTrack.id);
+  const isLiked = currentTrack ? likedTrackIds.has(currentTrack.id) : false;
 
   // Initialize HTML5 Audio Element
   useEffect(() => {
@@ -188,7 +188,7 @@ export function useAudioController(user = null, region = 'ID') {
       // True Track Duration from Full Audio Stream
       if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
         setDuration(Math.floor(audio.duration));
-      } else if (currentTrack.duration) {
+      } else if (currentTrack?.duration) {
         setDuration(currentTrack.duration);
       }
       setIsLoading(false);
@@ -237,16 +237,7 @@ export function useAudioController(user = null, region = 'ID') {
     const handleError = () => {
       console.warn('Audio playback error encountered on stream URL:', audio.src);
       setIsLoading(false);
-      // Fallback: If CORS blocked the stream with anonymous crossOrigin, retry without crossOrigin
-      if (audio.crossOrigin) {
-        audio.crossOrigin = null;
-        if (audio.src) {
-          const currentSrc = audio.src;
-          audio.src = currentSrc;
-          audio.load();
-          audio.play().catch(() => {});
-        }
-      }
+      setIsPlaying(false);
     };
 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -270,7 +261,7 @@ export function useAudioController(user = null, region = 'ID') {
   // Play / Pause Toggle
   const togglePlayPause = useCallback(() => {
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio || !currentTrack) return;
 
     audioEqualizer.resume();
 
@@ -286,7 +277,7 @@ export function useAudioController(user = null, region = 'ID') {
           setIsPlaying(false);
         });
     }
-  }, [isPlaying]);
+  }, [isPlaying, currentTrack]);
 
   // Compute session blacklist: current track + last 40 played tracks FIFO + all tracks sitting in queue
   const getSessionPlayedKeys = useCallback(() => {
@@ -486,7 +477,8 @@ export function useAudioController(user = null, region = 'ID') {
   // Next Track with Smart Auto-Queue trigger (BUG 2 FIX: NEVER LOOP BACK TO START)
   const handleNextTrack = useCallback(
     (fromEnded = false) => {
-      const queue = playlistQueue.length > 0 ? playlistQueue : REAL_INITIAL_TRACKS;
+      if (!currentTrack) return;
+      const queue = playlistQueue.length > 0 ? playlistQueue : [currentTrack];
       const currentIndex = queue.findIndex((t) => t.id === currentTrack.id);
 
       // Shuffle mode
@@ -536,15 +528,15 @@ export function useAudioController(user = null, region = 'ID') {
     if (!track) return;
     setPlaylistQueue((prev) => {
       const filtered = prev.filter((t) => t.id !== track.id);
-      const currIdx = filtered.findIndex((t) => t.id === currentTrack.id);
+      const currIdx = currentTrack ? filtered.findIndex((t) => t.id === currentTrack.id) : -1;
       if (currIdx === -1) {
-        return [currentTrack, track, ...filtered];
+        return currentTrack ? [currentTrack, track, ...filtered] : [track, ...filtered];
       }
       const updated = [...filtered];
       updated.splice(currIdx + 1, 0, track);
       return updated;
     });
-  }, [currentTrack.id]);
+  }, [currentTrack]);
 
   const moveQueueTrack = useCallback((fromIndex, toIndex) => {
     setPlaylistQueue((prev) => {
@@ -569,18 +561,19 @@ export function useAudioController(user = null, region = 'ID') {
   // Previous Track
   const handlePrevTrack = useCallback(() => {
     const audio = audioRef.current;
+    if (!currentTrack) return;
     if (audio && audio.currentTime > 3) {
       audio.currentTime = 0;
       setCurrentTime(0);
       return;
     }
 
-    const queue = playlistQueue.length > 0 ? playlistQueue : REAL_INITIAL_TRACKS;
+    const queue = playlistQueue.length > 0 ? playlistQueue : [currentTrack];
     const currentIndex = queue.findIndex((t) => t.id === currentTrack.id);
     const prevIndex = (currentIndex - 1 + queue.length) % queue.length;
     const prevTrack = queue[prevIndex] || queue[0];
-    playTrack(prevTrack);
-  }, [playlistQueue, currentTrack.id, playTrack]);
+    if (prevTrack) playTrack(prevTrack);
+  }, [playlistQueue, currentTrack, playTrack]);
 
   // Seek
   const seekTo = useCallback(
@@ -697,7 +690,7 @@ export function useAudioController(user = null, region = 'ID') {
 
   // Native Lockscreen Controls via MediaSession API
   useEffect(() => {
-    if (!('mediaSession' in navigator)) return;
+    if (!('mediaSession' in navigator) || !currentTrack) return;
 
     try {
       navigator.mediaSession.metadata = new window.MediaMetadata({

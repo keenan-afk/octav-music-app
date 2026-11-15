@@ -183,7 +183,7 @@ export function LibraryView({
           <span>Recents</span>
         </div>
         <span className="text-[11px] text-white/40">
-          {customPlaylists.length + playlists.length} playlists • {likedTracks.length} saved
+          {customPlaylists.length} playlists • {likedTracks.length} saved
         </span>
       </div>
 
@@ -262,8 +262,26 @@ export function LibraryView({
           </div>
         ))}
 
-        {/* Empty state when no custom playlists and filtered */}
-        {displayedItems.length === 0 && (
+        {/* Empty state when no custom playlists */}
+        {displayedItems.length === 0 && !searchQuery && (
+          <div className="py-10 px-4 text-center flex flex-col items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center mb-3">
+              <Plus className="w-6 h-6 text-white/40" />
+            </div>
+            <h4 className="text-sm font-bold text-white mb-1">Your library is empty</h4>
+            <p className="text-xs text-white/50 max-w-[240px] mb-4">
+              Create your first playlist to organize your favorite songs on Octav.
+            </p>
+            <button
+              onClick={onOpenCreatePlaylist}
+              className="px-4 py-2 rounded-full bg-white text-black text-xs font-bold hover:scale-105 active:scale-95 transition-transform cursor-pointer"
+            >
+              + Create Playlist
+            </button>
+          </div>
+        )}
+
+        {displayedItems.length === 0 && searchQuery && (
           <div className="py-8 text-center text-white/40 text-xs">
             No items found matching "{searchQuery}"
           </div>

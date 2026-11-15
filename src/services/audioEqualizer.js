@@ -136,27 +136,8 @@ class AudioEqualizerEngine {
         prevNode = filter;
       });
 
-      // Spatial Audio Simulation Network (Dry/Wet mix + Synthetic Impulse Reverb)
-      this.dryGain = this.ctx.createGain();
-      this.wetGain = this.ctx.createGain();
-      this.dryGain.gain.value = 1;
-      this.wetGain.gain.value = 0.35;
-
-      // Synthetic 3D Spatial Impulse Response
-      this.spatialConvolver = this.ctx.createConvolver();
-      this.spatialConvolver.buffer = this.createSpatialImpulse(this.ctx, 1.8, 2.5);
-
-      // Connect dry/wet paths
-      prevNode.connect(this.dryGain);
-      prevNode.connect(this.spatialConvolver);
-      this.spatialConvolver.connect(this.wetGain);
-
-      // Merge and route to analyser and master destination
-      const merger = this.ctx.createGain();
-      this.dryGain.connect(merger);
-      this.wetGain.connect(merger);
-
-      merger.connect(this.analyser);
+      // Route filter chain directly to analyser and master destination (ultra-clean, zero stutter)
+      prevNode.connect(this.analyser);
       this.analyser.connect(this.ctx.destination);
 
       this.isInitialized = true;
@@ -166,21 +147,12 @@ class AudioEqualizerEngine {
     }
   }
 
-  // Generate synthetic stereo spatial impulse buffer
-  createSpatialImpulse(ctx, duration = 1.5, decay = 2.0) {
-    const sampleRate = ctx.sampleRate;
-    const length = sampleRate * duration;
-    const impulse = ctx.createBuffer(2, length, sampleRate);
-    const left = impulse.getChannelData(0);
-    const right = impulse.getChannelData(1);
+  toggleSpatial(enabled) {
+    this.isSpatialEnabled = Boolean(enabled);
+  }
 
-    for (let i = 0; i < length; i++) {
-      const n = i / length;
-      const d = Math.exp(-n * decay);
-      left[i] = (Math.random() * 2 - 1) * d;
-      right[i] = (Math.random() * 2 - 1) * d * 0.95; // Slight phase asymmetry for 3D width
-    }
-    return impulse;
+  setSpatialMode(mode) {
+    this.spatialMode = mode;
   }
 
   resume() {

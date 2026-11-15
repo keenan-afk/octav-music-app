@@ -28,7 +28,7 @@ import { useAuth } from './context/AuthContext';
 import { useAudioController } from './hooks/useAudioController';
 import { usePlaylists } from './hooks/usePlaylists';
 import { useRegion } from './hooks/useRegion';
-import { REAL_INITIAL_TRACKS, REAL_PLAYLISTS } from './data/mockTracks';
+import { REAL_PLAYLISTS } from './data/mockTracks';
 import { fetchHomeFeed } from './services/musicApi';
 
 export function App() {
@@ -42,7 +42,7 @@ export function App() {
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSpatialModalOpen, setIsSpatialModalOpen] = useState(false);
-  const [homeTracks, setHomeTracks] = useState(REAL_INITIAL_TRACKS);
+  const [homeTracks, setHomeTracks] = useState([]);
 
   // Artist Discography Sheet
   const [selectedArtist, setSelectedArtist] = useState(null);
@@ -179,112 +179,6 @@ export function App() {
     };
   }, [region]);
 
-  // Quick jump items for top 2x4 grid with 8 real songs & playlists
-  const quickJumpItems = useMemo(() => {
-    const t = homeTracks.length >= 6 ? homeTracks : REAL_INITIAL_TRACKS;
-
-    return [
-      {
-        id: t[0]?.id || 'nov-rain',
-        title: t[0]?.title || (isIndo ? 'Dan...' : 'November Rain'),
-        cover: t[0]?.cover,
-        type: 'Track',
-        trackData: t[0],
-      },
-      {
-        id: 'pl-liked',
-        title: 'Liked Songs',
-        isLikedCollection: true,
-        type: 'Playlist',
-        playlistData: {
-          id: 'pl-liked-collection',
-          title: 'Liked Songs',
-          subtitle: `Playlist • ${audio.likedTracks.length} songs`,
-          type: 'Playlist',
-          cover: audio.likedTracks[0]?.cover || null,
-          trackCount: audio.likedTracks.length,
-          curator: 'You',
-          description: 'All your favorite songs saved permanently in your library.',
-          isPinned: true,
-          tracks: audio.likedTracks,
-        },
-      },
-      {
-        id: t[1]?.id || 'dear-god',
-        title: t[1]?.title || (isIndo ? 'Kangen' : 'Dear God'),
-        cover: t[1]?.cover,
-        type: 'Track',
-        trackData: t[1],
-      },
-      {
-        id: 'pl-rock-legends',
-        title: isIndo ? "Indo Rock Classics" : "Rock Legends",
-        cover: REAL_PLAYLISTS[isIndo ? 2 : 1]?.cover,
-        type: 'Playlist',
-        playlistData: REAL_PLAYLISTS[isIndo ? 2 : 1],
-      },
-      {
-        id: t[2]?.id || 'track-3',
-        title: t[2]?.title || (isIndo ? 'Separuh Aku' : 'Wonderwall'),
-        cover: t[2]?.cover,
-        type: 'Track',
-        trackData: t[2],
-      },
-      {
-        id: 'pl-indo-classics',
-        title: isIndo ? 'Sheila On 7 & Dewa' : 'British Rock Anthems',
-        cover: REAL_PLAYLISTS[1]?.cover,
-        type: 'Playlist',
-        playlistData: REAL_PLAYLISTS[1],
-      },
-      {
-        id: t[3]?.id || 'track-4',
-        title: t[3]?.title || (isIndo ? 'Akad' : 'Bohemian Rhapsody'),
-        cover: t[3]?.cover,
-        type: 'Track',
-        trackData: t[3],
-      },
-      {
-        id: t[4]?.id || 'track-5',
-        title: t[4]?.title || (isIndo ? 'November Rain' : 'Creep'),
-        cover: t[4]?.cover,
-        type: 'Track',
-        trackData: t[4],
-      },
-    ];
-  }, [homeTracks, audio.likedTracks, isIndo]);
-
-  // Podcast items for the 'Podcasts' filter
-  const podcastShelves = useMemo(() => [
-    {
-      id: 'pod-huberman',
-      title: 'Huberman Lab',
-      subtitle: 'Dr. Andrew Huberman • Neurobiology & Science',
-      cover: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=400&q=80',
-      description: 'Science and science-based tools for everyday life.',
-      type: 'Playlist',
-      tracks: [homeTracks[0]],
-    },
-    {
-      id: 'pod-lex',
-      title: 'Lex Fridman Podcast',
-      subtitle: 'Lex Fridman • AI, Physics, Consciousness',
-      cover: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=400&q=80',
-      description: 'Conversations about the nature of intelligence, science, and history.',
-      type: 'Playlist',
-      tracks: [homeTracks[1]],
-    },
-    {
-      id: 'pod-ted',
-      title: 'TED Talks Daily',
-      subtitle: 'TED Audio Collective • Ideas worth spreading',
-      cover: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?auto=format&fit=crop&w=400&q=80',
-      description: 'Every weekday, TED Talks Daily brings you the latest talks in audio.',
-      type: 'Playlist',
-      tracks: [homeTracks[2]],
-    },
-  ], [homeTracks]);
-
   const handleOpenPlaylist = (playlist) => {
     setSelectedPlaylist(playlist);
   };
@@ -387,7 +281,7 @@ export function App() {
           ) : activeTab === 'library' ? (
             /* Your Library View */
             <LibraryView
-              playlists={REAL_PLAYLISTS}
+              playlists={[]}
               customPlaylists={playlistsManager.customPlaylists}
               likedTracks={audio.likedTracks}
               recentlyPlayed={audio.recentlyPlayed}
@@ -538,7 +432,7 @@ export function App() {
           isOpen={isProfileDrawerOpen}
           onClose={() => setIsProfileDrawerOpen(false)}
           likedTracksCount={audio.likedTracks.length}
-          playlistsCount={playlistsManager.customPlaylists.length + REAL_PLAYLISTS.length}
+          playlistsCount={playlistsManager.customPlaylists.length}
           region={region}
           onToggleRegion={handleToggleRegion}
           recentlyPlayed={audio.recentlyPlayed}

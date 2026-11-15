@@ -5,7 +5,7 @@ import { QuickJumpGrid } from './QuickJumpGrid';
 import { HorizontalShelf } from './HorizontalShelf';
 import { SmartArtwork } from './SmartArtwork';
 import { useAuth } from '../context/AuthContext';
-import { REAL_INITIAL_TRACKS, REAL_PLAYLISTS } from '../data/mockTracks';
+import { REAL_PLAYLISTS } from '../data/mockTracks';
 import { searchMusic, fetchTrendingTracks, fetchNewReleases } from '../services/musicApi';
 
 const GREETING_PATTERNS = [
@@ -41,13 +41,33 @@ export function HomeView({
     return pattern.replace('{name}', cleanName);
   }, [user?.displayName, effectiveDisplayName]);
 
-  // Shelf 1: "Last Session" / Recently Played items
-  const starterTracks = useMemo(() => {
-    return REAL_INITIAL_TRACKS.slice(0, 4);
-  }, []);
+  // Trending Tracks (Regional Top Charts)
+  const [trendingTracks, setTrendingTracks] = useState([]);
 
+  useEffect(() => {
+    let active = true;
+    async function loadTrending() {
+      try {
+        const trending = await fetchTrendingTracks(region);
+        if (active && trending.length > 0) {
+          setTrendingTracks(trending);
+        }
+      } catch (err) {
+        console.warn('Failed loading trending tracks:', err);
+      }
+    }
+    loadTrending();
+    return () => {
+      active = false;
+    };
+  }, [region]);
+
+  // Shelf 1: "Last Session" / Quick Jump Items
   const quickJumpItems = useMemo(() => {
-    const sourceTracks = recentlyPlayed.length > 0 ? recentlyPlayed.slice(0, 7) : starterTracks;
+    const sourceTracks =
+      recentlyPlayed.length > 0
+        ? recentlyPlayed.slice(0, 7)
+        : trendingTracks.slice(0, 7);
 
     const likedCard = {
       id: 'pl-liked',
@@ -55,7 +75,7 @@ export function HomeView({
       isLikedCollection: true,
       type: 'Playlist',
       tracks: likedTracks,
-      cover: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?auto=format&fit=crop&w=300&q=80',
+      cover: likedTracks[0]?.cover || 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?auto=format&fit=crop&w=300&q=80',
     };
 
     return [
@@ -69,17 +89,21 @@ export function HomeView({
         trackData: t,
       })),
     ];
-  }, [recentlyPlayed, starterTracks, likedTracks]);
+  }, [recentlyPlayed, trendingTracks, likedTracks]);
 
-  // Shelf 2: "More Like [Track Name]"
+  // Shelf 2: "More Like [Track Name]" (Only for users with listening history)
   const recommendationBase = useMemo(() => {
-    return recentlyPlayed[0] || REAL_INITIAL_TRACKS[0];
+    return recentlyPlayed.length > 0 ? recentlyPlayed[0] : null;
   }, [recentlyPlayed]);
 
   const [recommendedTracks, setRecommendedTracks] = useState([]);
   const [isLoadingRecs, setIsLoadingRecs] = useState(false);
 
   useEffect(() => {
+    if (!recommendationBase) {
+      setRecommendedTracks([]);
+      return;
+    }
     let active = true;
     async function loadRecommendations() {
       setIsLoadingRecs(true);
@@ -87,7 +111,6 @@ export function HomeView({
         const query = recommendationBase.artist || recommendationBase.title;
         const res = await searchMusic(query, region);
         if (active && res.length > 0) {
-          // Filter out the base track itself
           const filtered = res.filter((t) => t.id !== recommendationBase.id).slice(0, 8);
           setRecommendedTracks(filtered.length > 0 ? filtered : res.slice(0, 8));
         }
@@ -101,7 +124,7 @@ export function HomeView({
     return () => {
       active = false;
     };
-  }, [recommendationBase.id, recommendationBase.artist, region]);
+  }, [recommendationBase?.id, recommendationBase?.artist, region]);
 
   // Shelf 3: "New Releases"
   const [newReleases, setNewReleases] = useState([]);
@@ -124,72 +147,22 @@ export function HomeView({
     };
   }, [region]);
 
-  // Shelf 4: "Trending Songs"
-  const [trendingTracks, setTrendingTracks] = useState([]);
 
-  useEffect(() => {
-    let active = true;
-    async function loadTrending() {
-      try {
-        const trending = await fetchTrendingTracks(region);
-        if (active && trending.length > 0) {
-          setTrendingTracks(trending);
-        }
-      } catch (err) {
-        console.warn('Failed loading trending tracks:', err);
-      }
-    }
-    loadTrending();
-    return () => {
-      active = false;
-    };
-  }, [region]);
 
-  // Shelf 5: "All-Time Hits" (Timeless rock & Indonesian/global classics)
+  // Shelf 5: "All-Time & Trending Hits" dynamically mapped from regional charts
   const allTimeHits = useMemo(() => {
-    return [
-      {
-        id: 'ath-1',
-        title: 'November Rain',
-        artist: "Guns N' Roses",
-        cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80',
-        subtitle: "Guns N' Roses • Rock Legend",
-        trackData: REAL_INITIAL_TRACKS[0],
-      },
-      {
-        id: 'ath-2',
-        title: 'Dan...',
-        artist: 'Sheila On 7',
-        cover: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&w=400&q=80',
-        subtitle: 'Sheila On 7 • Indo Masterpiece',
-        trackData: REAL_INITIAL_TRACKS[2],
-      },
-      {
-        id: 'ath-3',
-        title: 'Dear God',
-        artist: 'Avenged Sevenfold',
-        cover: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=400&q=80',
-        subtitle: 'Avenged Sevenfold • Classic Anthem',
-        trackData: REAL_INITIAL_TRACKS[1],
-      },
-      {
-        id: 'ath-4',
-        title: 'Kangen',
-        artist: 'Dewa 19',
-        cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=400&q=80',
-        subtitle: 'Dewa 19 • 1992 Masterpiece',
-        trackData: REAL_INITIAL_TRACKS[3],
-      },
-      {
-        id: 'ath-5',
-        title: 'Wonderwall',
-        artist: 'Oasis',
-        cover: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=400&q=80',
-        subtitle: "Oasis • (What's the Story) Morning Glory?",
-        trackData: REAL_INITIAL_TRACKS[4] || REAL_INITIAL_TRACKS[0],
-      },
-    ];
-  }, []);
+    if (trendingTracks.length > 0) {
+      return trendingTracks.map((t, idx) => ({
+        id: `ath-${t.id || idx}`,
+        title: t.title,
+        artist: t.artist,
+        cover: t.cover,
+        subtitle: `${t.artist} • Chart Hit`,
+        trackData: t,
+      }));
+    }
+    return [];
+  }, [trendingTracks]);
 
   // Dynamic Filter Modes
   const isAll = activeFilter === 'All';
@@ -202,21 +175,20 @@ export function HomeView({
   const rockTracks = useMemo(() => {
     return allTimeHits.filter((h) => {
       const art = h.artist?.toLowerCase() || '';
-      return art.includes('guns') || art.includes('avenged') || art.includes('dewa') || art.includes('oasis');
+      return art.includes('rock') || art.includes('dewa') || art.includes('sheila') || art.includes('noah');
     });
   }, [allTimeHits]);
 
   const indoTracks = useMemo(() => {
     return allTimeHits.filter((h) => {
-      const art = h.artist?.toLowerCase() || '';
-      return art.includes('sheila') || art.includes('dewa');
+      return region === 'ID';
     });
-  }, [allTimeHits]);
+  }, [allTimeHits, region]);
 
   const acousticTracks = useMemo(() => {
     return allTimeHits.filter((h) => {
       const tit = h.title?.toLowerCase() || '';
-      return tit.includes('dan') || tit.includes('wonderwall') || tit.includes('kangen');
+      return tit.includes('acoustic') || tit.includes('dan') || tit.includes('saat') || tit.includes('slow');
     });
   }, [allTimeHits]);
 
@@ -252,7 +224,7 @@ export function HomeView({
             isPlaying={isPlaying}
             onSelectTrack={(item) => {
               const track = item.trackData || item;
-              onSelectTrack(track, recentlyPlayed.length > 0 ? recentlyPlayed : starterTracks);
+              onSelectTrack(track, recentlyPlayed.length > 0 ? recentlyPlayed : trendingTracks);
             }}
             onOpenPlaylist={(item) => {
               onOpenPlaylist(item);
@@ -303,30 +275,36 @@ export function HomeView({
         </div>
       )}
 
-      {/* Shelf 2 — "More Like [Track Name]" */}
+      {/* Shelf 2 — "More Like [Track Name]" or Regional Trending Shelf */}
       {(isAll || isTrending) && (
         <div className="py-2">
           <div className="px-4 mb-2.5 flex items-baseline justify-between">
             <div className="flex items-center gap-1.5">
               <Sparkles className="w-4 h-4 text-[#1ed760]" />
               <h2 className="text-lg font-extrabold text-white tracking-tight">
-                More like {recommendationBase.title}
+                {recommendationBase
+                  ? `More like ${recommendationBase.title}`
+                  : region === 'ID'
+                  ? 'Trending Now in Indonesia'
+                  : 'Trending Worldwide'}
               </h2>
             </div>
-            <span
-              onClick={() => onOpenArtist?.(recommendationBase.artist)}
-              className="text-xs font-semibold text-white/50 hover:text-white cursor-pointer transition-colors"
-            >
-              Explore artist
-            </span>
+            {recommendationBase && (
+              <span
+                onClick={() => onOpenArtist?.(recommendationBase.artist)}
+                className="text-xs font-semibold text-white/50 hover:text-white cursor-pointer transition-colors"
+              >
+                Explore artist
+              </span>
+            )}
           </div>
 
-          {recommendedTracks.length > 0 ? (
+          {((recommendationBase ? recommendedTracks : trendingTracks).length > 0) && (
             <div className="flex gap-3 px-4 overflow-x-auto scrollbar-none pb-2 pt-0.5">
-              {recommendedTracks.map((track) => (
+              {(recommendationBase ? recommendedTracks : trendingTracks).map((track) => (
                 <div
                   key={track.id}
-                  onClick={() => onSelectTrack(track, recommendedTracks)}
+                  onClick={() => onSelectTrack(track, recommendationBase ? recommendedTracks : trendingTracks)}
                   className="group flex-shrink-0 w-[148px] cursor-pointer active:scale-95 transition-transform duration-200"
                 >
                   <div
@@ -359,24 +337,6 @@ export function HomeView({
                   >
                     {track.artist}
                   </p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="flex gap-3 px-4 overflow-x-auto scrollbar-none">
-              {starterTracks.map((t) => (
-                <div
-                  key={t.id}
-                  onClick={() => onSelectTrack(t, starterTracks)}
-                  className="flex-shrink-0 w-[148px] cursor-pointer"
-                >
-                  <img
-                    src={t.cover}
-                    alt={t.title}
-                    className="w-[148px] h-[148px] rounded-xl object-cover mb-2 border border-white/10"
-                  />
-                  <h3 className="text-xs font-bold text-white truncate">{t.title}</h3>
-                  <p className="text-[11px] text-white/50 truncate">{t.artist}</p>
                 </div>
               ))}
             </div>

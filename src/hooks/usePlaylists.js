@@ -1,36 +1,30 @@
 import { useState, useEffect, useCallback } from 'react';
-import { REAL_PLAYLISTS } from '../data/mockTracks';
 import { syncUserDataToCloud } from '../services/supabaseClient';
 
-const STORAGE_KEY_PLAYLISTS = 'spotify_liquid_custom_playlists';
+const STORAGE_KEY_PLAYLISTS = 'octav_guest_custom_playlists';
+const LEGACY_STORAGE_KEY_PLAYLISTS = 'spotify_liquid_custom_playlists';
 
 export function usePlaylists(user = null) {
   const getStorageKey = () => (user?.id ? `octav_user_${user.id}_custom_playlists` : STORAGE_KEY_PLAYLISTS);
-  const getLegacyStorageKey = () => (user?.id ? `vetra_user_${user.id}_custom_playlists` : null);
+  const getLegacyStorageKey = () => (user?.id ? `vetra_user_${user.id}_custom_playlists` : LEGACY_STORAGE_KEY_PLAYLISTS);
 
   const [customPlaylists, setCustomPlaylists] = useState(() => {
     try {
       const key = user?.id ? `octav_user_${user.id}_custom_playlists` : STORAGE_KEY_PLAYLISTS;
-      const legacyKey = user?.id ? `vetra_user_${user.id}_custom_playlists` : null;
+      const legacyKey = user?.id ? `vetra_user_${user.id}_custom_playlists` : LEGACY_STORAGE_KEY_PLAYLISTS;
       const saved = localStorage.getItem(key) || (legacyKey ? localStorage.getItem(legacyKey) : null);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          // Filter out legacy dummy "Roadtrip Rockers" if it was empty mock
+          const cleaned = parsed.filter((p) => p.id !== 'custom-favorites');
+          return cleaned;
+        }
       }
     } catch (e) {
       console.warn('Failed to load custom playlists from localStorage:', e);
     }
-    return [
-      {
-        id: 'custom-favorites',
-        title: 'Roadtrip Rockers',
-        description: 'High-octane rock anthems for open highways.',
-        curator: 'You',
-        isCustom: true,
-        tracks: [],
-        createdAt: Date.now(),
-      },
-    ];
+    return [];
   });
 
   // Re-load playlists when active user changes
@@ -42,25 +36,15 @@ export function usePlaylists(user = null) {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          setCustomPlaylists(parsed);
+          const cleaned = parsed.filter((p) => p.id !== 'custom-favorites');
+          setCustomPlaylists(cleaned);
           return;
         }
       }
     } catch (e) {}
 
-    // Fallback if empty
     if (!user) {
-      setCustomPlaylists([
-        {
-          id: 'custom-favorites',
-          title: 'Roadtrip Rockers',
-          description: 'High-octane rock anthems for open highways.',
-          curator: 'You',
-          isCustom: true,
-          tracks: [],
-          createdAt: Date.now(),
-        },
-      ]);
+      setCustomPlaylists([]);
     }
   }, [user?.id]);
 

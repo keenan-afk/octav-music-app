@@ -152,11 +152,10 @@ export function AvatarUploadModal({ isOpen, onClose, currentAvatar, onSaveAvatar
           <button
             type="button"
             onClick={() => setActiveTab('upload')}
-            className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeTab === 'upload'
+            className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${activeTab === 'upload'
                 ? 'bg-white/15 text-white shadow-sm'
                 : 'text-white/50 hover:text-white'
-            }`}
+              }`}
           >
             <Upload className="w-3.5 h-3.5" />
             <span>Upload Photo</span>
@@ -164,11 +163,10 @@ export function AvatarUploadModal({ isOpen, onClose, currentAvatar, onSaveAvatar
           <button
             type="button"
             onClick={() => setActiveTab('url')}
-            className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeTab === 'url'
+            className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${activeTab === 'url'
                 ? 'bg-white/15 text-white shadow-sm'
                 : 'text-white/50 hover:text-white'
-            }`}
+              }`}
           >
             <LinkIcon className="w-3.5 h-3.5" />
             <span>Image URL</span>
