@@ -82,7 +82,7 @@ const QUERY_ALIASES = {
   avenged: 'Avenged Sevenfold',
   d19: 'Dewa 19',
   dewa: 'Dewa 19',
-  peterpan: 'Noah',
+  peterpan: 'Peterpan',
   noah: 'Noah',
   payung: 'Payung Teduh',
   am: 'Arctic Monkeys',
@@ -525,6 +525,13 @@ export async function searchMusic(rawQuery, region = 'ID') {
 
   const lowQuery = normalized.toLowerCase().trim();
 
+  // Determine if the query directly matches an artist entity
+  const isQueryArtist = rawArtists.some((ra) => {
+    const n = (ra.artistName || '').toLowerCase().trim();
+    const cleanN = n.replace(/[^\w\s]/g, '').trim();
+    return n === lowQuery || cleanN === lowQuery || n.includes(lowQuery) || lowQuery.includes(n);
+  });
+
   // Relevance Ranking & Short Title Boost (e.g. "Dan" by Sheila On 7)
   const rankedSongs = [...songsToUse].sort((a, b) => {
     const aTitle = (a.trackName || '').toLowerCase();
@@ -535,11 +542,16 @@ export async function searchMusic(rawQuery, region = 'ID') {
     // Clean titles for punctuation-insensitive matching (e.g. "Dan..." vs "Dan")
     const cleanATitle = aTitle.replace(/[^\w\s]/g, '').trim();
     const cleanBTitle = bTitle.replace(/[^\w\s]/g, '').trim();
+    const cleanAArtist = aArtist.replace(/[^\w\s]/g, '').trim();
+    const cleanBArtist = bArtist.replace(/[^\w\s]/g, '').trim();
+
+    const aArtistExact = aArtist === lowQuery || cleanAArtist === lowQuery;
+    const bArtistExact = bArtist === lowQuery || cleanBArtist === lowQuery;
 
     const aExactTitle = aTitle === lowQuery || cleanATitle === lowQuery;
     const bExactTitle = bTitle === lowQuery || cleanBTitle === lowQuery;
 
-    // In 'ID' region, if an exact title match is by Sheila On 7, boost to #1!
+    // Special Boost: In 'ID' region, if an exact title match is "Dan" by Sheila On 7, boost to #1!
     if (countryCode === 'ID') {
       const aIsSo7Dan = aExactTitle && aArtist.includes('sheila on 7');
       const bIsSo7Dan = bExactTitle && bArtist.includes('sheila on 7');
@@ -547,20 +559,30 @@ export async function searchMusic(rawQuery, region = 'ID') {
       if (!aIsSo7Dan && bIsSo7Dan) return 1;
     }
 
-    if (aExactTitle && !bExactTitle) return -1;
-    if (!aExactTitle && bExactTitle) return 1;
+    // CRITICAL FIX: If user searched for an artist (e.g. "Tulus", "Noah", "Ungu", "Gigi", "Cokelat"),
+    // songs BY THAT ARTIST must strictly come first! Never place another artist's song at #1!
+    if (isQueryArtist) {
+      if (aArtistExact && !bArtistExact) return -1;
+      if (!aArtistExact && bArtistExact) return 1;
+
+      const aArtistHas = aArtist.includes(lowQuery) || lowQuery.includes(aArtist);
+      const bArtistHas = bArtist.includes(lowQuery) || lowQuery.includes(bArtist);
+      if (aArtistHas && !bArtistHas) return -1;
+      if (!aArtistHas && bArtistHas) return 1;
+    } else {
+      // General Song Search (e.g. "Dan", "Kangen", "Istana Bintang")
+      if (aExactTitle && !bExactTitle) return -1;
+      if (!aExactTitle && bExactTitle) return 1;
+
+      if (aArtistExact && !bArtistExact) return -1;
+      if (!aArtistExact && bArtistExact) return 1;
+    }
 
     // Title startsWith lowQuery (e.g. "Dan " vs random title containing "dan")
     const aStartsWith = aTitle.startsWith(lowQuery);
     const bStartsWith = bTitle.startsWith(lowQuery);
     if (aStartsWith && !bStartsWith) return -1;
     if (!aStartsWith && bStartsWith) return 1;
-
-    // Exact artist match (full name match, not just substring like "Dan + Shay" for "dan")
-    const aArtistExact = aArtist === lowQuery;
-    const bArtistExact = bArtist === lowQuery;
-    if (aArtistExact && !bArtistExact) return -1;
-    if (!aArtistExact && bArtistExact) return 1;
 
     // Indonesian priority artists when searching in 'ID'
     if (countryCode === 'ID') {
@@ -589,7 +611,7 @@ export async function searchMusic(rawQuery, region = 'ID') {
       album: item.collectionName || title,
       duration: durationSec,
       durationFormatted: formatDuration(durationSec),
-      cover: cover || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=800&q=80',
+      cover: cover || '',
       audioUrl: item.previewUrl || '',
       palette: getPaletteForTrack(title, artist),
       releaseYear: item.releaseDate ? new Date(item.releaseDate).getFullYear() : 2024,
@@ -603,22 +625,34 @@ export async function searchMusic(rawQuery, region = 'ID') {
   // Extract Top Artist match
   let topArtist = null;
   if (rawArtists.length > 0) {
-    const matchedArtist = rawArtists.find((a) => {
-      const name = (a.artistName || '').toLowerCase();
-      return name.includes(lowQuery) || lowQuery.includes(name);
-    }) || rawArtists[0];
+    const matchedArtist =
+      rawArtists.find((a) => {
+        const name = (a.artistName || '').toLowerCase().trim();
+        const cleanN = name.replace(/[^\w\s]/g, '').trim();
+        return name === lowQuery || cleanN === lowQuery;
+      }) ||
+      rawArtists.find((a) => {
+        const name = (a.artistName || '').toLowerCase();
+        return name.includes(lowQuery) || lowQuery.includes(name);
+      }) ||
+      rawArtists[0];
 
-    // Find highest resolution artwork from this artist's tracks
-    const artistTracks = parsedTracks.filter((t) => t.artistId === matchedArtist.artistId);
-    const artistCover = artistTracks[0]?.cover || parsedTracks[0]?.cover || '';
+    // Find highest resolution artwork STRICTLY from THIS SPECIFIC artist's tracks
+    const artistTracks = parsedTracks.filter(
+      (t) => t.artistId === matchedArtist.artistId || isArtistFuzzyMatch(t.artist, matchedArtist.artistName)
+    );
+    // CRITICAL BUG FIX: NEVER fall back to parsedTracks[0]?.cover if it's from another artist!
+    const artistCover = artistTracks[0]?.cover || '';
 
-    topArtist = {
-      id: matchedArtist.artistId,
-      name: matchedArtist.artistName,
-      genre: matchedArtist.primaryGenreName || 'Popular Music',
-      cover: artistCover,
-      trackCount: artistTracks.length || 25,
-    };
+    if (artistCover || isQueryArtist) {
+      topArtist = {
+        id: matchedArtist.artistId,
+        name: matchedArtist.artistName,
+        genre: matchedArtist.primaryGenreName || 'Popular Music',
+        cover: artistCover,
+        trackCount: artistTracks.length || 25,
+      };
+    }
   }
 
   // Return array with .topArtist attached for 100% backwards compatibility
@@ -677,7 +711,16 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
 
     const results = songsRes.results || [];
     const artistObj = results.find((r) => r.wrapperType === 'artist') || null;
-    const rawSongs = results.filter((r) => (r.wrapperType === 'track' && r.kind === 'song') || r.trackName);
+    const targetArtistName = artistObj?.artistName || artistName || '';
+
+    // Strictly filter songs: only include songs that actually match this target artist!
+    const rawSongs = results.filter((r) => {
+      const isSong = (r.wrapperType === 'track' && r.kind === 'song') || r.trackName;
+      if (!isSong) return false;
+      if (!targetArtistName) return true;
+      const tArtist = r.artistName || '';
+      return isArtistFuzzyMatch(tArtist, targetArtistName);
+    });
 
     const tracks = rawSongs.slice(0, 10).map((item, index) => {
       const durationSec = Math.round((item.trackTimeMillis || 210000) / 1000);
@@ -685,7 +728,7 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
         .replace('100x100bb.jpg', '600x600bb.jpg')
         .replace(/^http:\/\//i, 'https://');
       const title = item.trackName || 'Untitled Track';
-      const resolvedArtist = item.artistName || artistObj?.artistName || artistName || 'Artist';
+      const resolvedArtist = item.artistName || targetArtistName || 'Artist';
 
       return {
         id: `artist-track-${item.trackId || index}`,
@@ -694,7 +737,7 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
         album: item.collectionName || title,
         duration: durationSec,
         durationFormatted: formatDuration(durationSec),
-        cover: cover || initialCover || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&q=80',
+        cover: cover || initialCover || '',
         audioUrl: item.previewUrl || '',
         palette: getPaletteForTrack(title, resolvedArtist),
         releaseYear: item.releaseDate ? new Date(item.releaseDate).getFullYear() : 2024,
@@ -704,12 +747,18 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
       };
     });
 
-    const finalArtistName = artistObj?.artistName || tracks[0]?.artist || artistName || 'Featured Artist';
+    const finalArtistName = targetArtistName || tracks[0]?.artist || 'Featured Artist';
 
-    // Parse Albums & Singles
+    // Parse Albums & Singles strictly matching this artist
     const rawAlbums = albumsRes.results || [];
     const albums = rawAlbums
-      .filter((r) => (r.wrapperType === 'collection' || r.collectionType === 'Album' || r.collectionName) && r.wrapperType !== 'artist')
+      .filter((r) => {
+        const isAlbum = (r.wrapperType === 'collection' || r.collectionType === 'Album' || r.collectionName) && r.wrapperType !== 'artist';
+        if (!isAlbum) return false;
+        if (!targetArtistName) return true;
+        const aArtist = r.artistName || '';
+        return isArtistFuzzyMatch(aArtist, targetArtistName);
+      })
       .map((item, idx) => {
         const cover = (item.artworkUrl100 || '')
           .replace('100x100bb.jpg', '600x600bb.jpg')
@@ -720,7 +769,7 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
           id: `album-${item.collectionId || idx}`,
           title: item.collectionName || 'Album',
           artist: item.artistName || finalArtistName,
-          cover: cover || initialCover || tracks[0]?.cover || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&q=80',
+          cover: cover || initialCover || tracks[0]?.cover || '',
           releaseYear: year,
           trackCount,
           type: trackCount <= 3 ? 'Single / EP' : 'Album',
@@ -736,12 +785,17 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
     const listenerNum = 1200000 + Math.abs(hash % 7500000);
     const monthlyListeners = `${listenerNum.toLocaleString()} monthly listeners`;
 
+    // Strictly resolve artist cover from a verified track or album of THIS artist
+    const matchingTrack = tracks.find((t) => isArtistFuzzyMatch(t.artist, finalArtistName));
+    const matchingAlbum = albums.find((a) => isArtistFuzzyMatch(a.artist, finalArtistName));
+    const artistCover = matchingTrack?.cover || matchingAlbum?.cover || initialCover || '';
+
     return {
       artist: {
         id: artistId || tracks[0]?.artistId || finalArtistName,
         name: finalArtistName,
         genre: artistObj?.primaryGenreName || rawSongs[0]?.primaryGenreName || 'Rock & Pop',
-        cover: tracks[0]?.cover || initialCover || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&q=80',
+        cover: artistCover,
         totalTracks: tracks.length,
         monthlyListeners,
       },

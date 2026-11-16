@@ -61,15 +61,25 @@ export function SmartArtwork({
 
     try {
       const term = `${title} ${artist}`.trim();
-      const url = `https://itunes.apple.com/search?media=music&entity=song&limit=1&term=${encodeURIComponent(
+      const url = `https://itunes.apple.com/search?media=music&entity=song&limit=5&term=${encodeURIComponent(
         term
       )}`;
 
       const res = await fetch(url, { signal: AbortSignal.timeout(3500) });
       if (res.ok) {
         const data = await res.json();
-        if (data.results?.[0]?.artworkUrl100) {
-          const recovered = data.results[0].artworkUrl100.replace('100x100bb.jpg', '600x600bb.jpg');
+        const results = data.results || [];
+
+        // STRICT ARTIST VERIFICATION: Never assign artwork from a completely different artist!
+        const match = results.find((item) => {
+          if (!artist) return true;
+          const a = (item.artistName || '').toLowerCase().trim();
+          const qA = artist.toLowerCase().trim();
+          return a === qA || a.includes(qA) || qA.includes(a);
+        });
+
+        if (match?.artworkUrl100) {
+          const recovered = match.artworkUrl100.replace('100x100bb.jpg', '600x600bb.jpg');
           artworkCache.set(cacheKey, recovered);
           setCurrentSrc(recovered);
           setHasError(false);
