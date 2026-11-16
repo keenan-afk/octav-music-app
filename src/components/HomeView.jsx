@@ -383,7 +383,13 @@ export function HomeView({
               return (
                 <div
                   key={track.id}
-                  onClick={() => onSelectTrack(track, trendingTracks)}
+                  onClick={() => {
+                    if (isCurrent) {
+                      onTogglePlayPause?.();
+                    } else {
+                      onSelectTrack(track, trendingTracks);
+                    }
+                  }}
                   className="group relative flex items-center h-16 rounded-xl overflow-hidden border border-white/[0.08] cursor-pointer active:scale-[0.98] transition-all bg-white/[0.04] hover:bg-white/[0.08] p-2 gap-2.5"
                 >
                   <SmartArtwork
@@ -439,6 +445,14 @@ export function HomeView({
           onSelectItem={onOpenPlaylist}
         />
       )}
+
+      {/* Footer Branding & Copyright by Keenan */}
+      <div className="pt-10 pb-8 flex flex-col items-center justify-center gap-1.5 opacity-50 hover:opacity-90 transition-opacity">
+        <span className="text-xs font-black tracking-widest uppercase text-white/70">Octav Music</span>
+        <p className="text-[11px] font-semibold text-white/50 tracking-wider">
+          Copyright © 2026 • Designed & Engineered by Keenan
+        </p>
+      </div>
     </div>
   );
 }

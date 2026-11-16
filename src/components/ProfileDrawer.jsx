@@ -627,9 +627,12 @@ export function ProfileDrawer({
             </div>
           )}
 
-          {/* Subtle Octav Brand Mark Footer */}
-          <div className="pt-4 mt-auto border-t border-white/[0.06] flex items-center justify-center opacity-40 hover:opacity-80 transition-opacity">
+          {/* Subtle Octav Brand Mark & Copyright by Keenan */}
+          <div className="pt-4 pb-2 mt-auto border-t border-white/[0.06] flex flex-col items-center justify-center gap-1.5 opacity-60 hover:opacity-90 transition-opacity">
             <OctavLogo size={16} showWordmark={true} />
+            <p className="text-[10px] font-semibold text-white/50 tracking-wider">
+              Copyright © 2026 Octav • Designed & Engineered by Keenan
+            </p>
           </div>
         </div>
       </div>

@@ -176,202 +176,106 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
     return streamCache.get(cacheKey);
   }
 
-  // Helper to query JioSaavn mirrors
-  async function queryJioSaavn(qTitle, qArtist) {
-    const saavnMirrors = [
-      'https://jiosaavn-api-private.vercel.app/search/songs?q=',
-      'https://saavn.me/search/songs?query=',
-      'https://saavn.dev/api/search/songs?query=',
-      'https://jiosaavn-api-privatecvc2.vercel.app/search/songs?query=',
-    ];
+  // Active High-Speed JioSaavn Mirrors (Concurrent Promise.any with 3000ms timeout)
+  const saavnMirrors = [
+    'https://jiosaavn-api-private.vercel.app/search/songs?q=',
+    'https://jiosaavn-api-taupe.vercel.app/search/songs?q=',
+  ];
 
-    const saavnQuery = `${qArtist} ${qTitle}`.trim();
+  // Try queries in priority order:
+  // 1) Artist + Title (Best for JioSaavn index e.g. "NOAH Separuh Aku", "ST12 Saat Terakhir")
+  // 2) Title + Artist (e.g. "Dan Sheila On 7")
+  // 3) Title alone (Crucial for songs like "Istana Bintang" by Setia Band where "Band" corrupts search)
+  const normTitle = cleanTitle.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  const normArtist = cleanArtist.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
-    for (const mirror of saavnMirrors) {
-      try {
-        const res = await fetch(mirror + encodeURIComponent(saavnQuery), {
-          signal: AbortSignal.timeout(2400),
-        });
-        if (res.ok) {
-          const json = await res.json();
-          const songs = json.data?.results || json.results || [];
-          if (!Array.isArray(songs) || songs.length === 0) continue;
+  const queries = [
+    `${normArtist} ${normTitle}`.trim(),
+    `${normTitle} ${normArtist}`.trim(),
+    normTitle,
+  ];
+  const distinctQueries = Array.from(new Set(queries.filter(Boolean)));
 
-          // STRICT DURATION GUARD: Only accept full songs (>= 90s)
-          const match = songs.find((s) => {
-            const dur = Number(s.duration || 0);
-            if (dur < 90) return false;
-            const retArtist =
-              s.artist_map?.primary_artists?.[0]?.name ||
-              s.primaryArtists ||
-              s.subtitle ||
-              '';
-            const retTitle = s.title || s.name || '';
-            return (
-              isArtistFuzzyMatch(retArtist, qArtist) ||
-              retTitle.toLowerCase().includes(qTitle.toLowerCase())
-            );
-          });
+  const artistTokens = normArtist
+    .toLowerCase()
+    .split(' ')
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 3 && !['the', 'and', 'band'].includes(w));
 
-          if (match) {
-            const downloadList = match.downloadUrl || match.download_url || [];
-            if (Array.isArray(downloadList) && downloadList.length > 0) {
-              let qualityPref = '320kbps';
-              try {
-                qualityPref = localStorage.getItem('octav_audio_quality') || '320kbps';
-              } catch {}
-              let best = null;
-              if (qualityPref.includes('96kbps')) {
-                best = downloadList.find((d) => d.quality === '96kbps') ||
-                       downloadList.find((d) => d.quality === '160kbps') ||
-                       downloadList[0];
-              } else {
-                // Default 320kbps High / Lossless Master
-                best = downloadList.find((d) => d.quality === '320kbps') ||
-                       downloadList.find((d) => d.quality === '160kbps') ||
-                       downloadList[downloadList.length - 1];
-              }
-              const resolved = best?.link || best?.url;
-              if (resolved) {
-                return { url: resolved, duration: Number(match.duration) };
-              }
-            }
+  for (const q of distinctQueries) {
+    try {
+      const res = await Promise.any(
+        saavnMirrors.map((m) =>
+          fetch(m + encodeURIComponent(q), { signal: AbortSignal.timeout(3000) }).then((r) => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.json();
+          })
+        )
+      );
+
+      const songs = res?.data?.results || res?.results || [];
+      if (!Array.isArray(songs) || songs.length === 0) continue;
+
+      // STRICT DURATION GUARD: Only accept full songs (>= 90s)
+      const match = songs.find((s) => {
+        const dur = Number(s.duration || 0);
+        if (dur < 90) return false;
+
+        const sName = (s.name || s.title || '').toLowerCase().replace(/[^\w\s]/g, ' ');
+        const sSub = (s.subtitle || '').toLowerCase();
+        const primary = (s.artist_map?.primary_artists || [])
+          .map((a) => (a.name || '').toLowerCase())
+          .join(' ');
+        const allArtists = `${sSub} ${primary}`;
+
+        const cleanT = normTitle.toLowerCase();
+        const titleMatch = sName.includes(cleanT) || cleanT.includes(sName.trim());
+
+        let artistMatch = false;
+        if (artistTokens.length === 0) {
+          artistMatch = allArtists.includes(normArtist.toLowerCase());
+        } else {
+          artistMatch = artistTokens.some((tok) => allArtists.includes(tok));
+        }
+
+        return titleMatch && artistMatch;
+      });
+
+      if (match) {
+        const downloadList = match.downloadUrl || match.download_url || [];
+        if (Array.isArray(downloadList) && downloadList.length > 0) {
+          let qualityPref = '320kbps';
+          try {
+            qualityPref = localStorage.getItem('octav_audio_quality') || '320kbps';
+          } catch {}
+
+          let best = null;
+          if (qualityPref.includes('96kbps')) {
+            best =
+              downloadList.find((d) => d.quality === '96kbps') ||
+              downloadList.find((d) => d.quality === '160kbps') ||
+              downloadList[0];
+          } else {
+            // Default 320kbps High Master / 160kbps
+            best =
+              downloadList.find((d) => d.quality === '320kbps') ||
+              downloadList.find((d) => d.quality === '160kbps') ||
+              downloadList[downloadList.length - 1];
+          }
+
+          const resolved = best?.link || best?.url;
+          if (resolved) {
+            streamCache.set(cacheKey, resolved);
+            return resolved;
           }
         }
-      } catch (e) {
-        // Fall through to next mirror
       }
+    } catch (e) {
+      // Continue to next query
     }
-    return null;
   }
 
-  // Helper to query Invidious & Piped pool
-  async function queryYouTubePool(qTitle, qArtist) {
-    const invidiousPool = [
-      'https://yt.chocolatemoo53.com',
-      'https://invidious.materialio.us',
-      'https://inv.nadeko.net',
-      'https://invidious.jing.rocks',
-    ];
-
-    const searchPhrase = `${qArtist} - ${qTitle} Official Audio`;
-
-    // 1. Try Invidious Pool (Fastest structured JSON video formats)
-    for (const base of invidiousPool) {
-      try {
-        const searchUrl = `${base}/api/v1/search?q=${encodeURIComponent(searchPhrase)}&type=video`;
-        const searchRes = await fetch(searchUrl, { signal: AbortSignal.timeout(2500) });
-        if (searchRes.ok) {
-          const items = await searchRes.json();
-          if (Array.isArray(items) && items.length > 0) {
-            // STRICT DURATION GUARD: 90s <= duration <= 900s
-            const validItem = items.find((i) => {
-              const dur = Number(i.lengthSeconds || i.duration || 0);
-              return dur >= 90 && dur <= 900;
-            });
-
-            if (validItem && validItem.videoId) {
-              const vidRes = await fetch(`${base}/api/v1/videos/${validItem.videoId}`, {
-                signal: AbortSignal.timeout(2500),
-              });
-              if (vidRes.ok) {
-                const vidData = await vidRes.json();
-                const audioFormats = (vidData.adaptiveFormats || [])
-                  .filter((f) => f.type?.includes('audio'))
-                  .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-
-                if (audioFormats.length > 0 && audioFormats[0].url) {
-                  return {
-                    url: audioFormats[0].url,
-                    duration: Number(validItem.lengthSeconds || validItem.duration),
-                  };
-                }
-              }
-            }
-          }
-        }
-      } catch (e) {
-        // Continue
-      }
-    }
-
-    // 2. Try Piped Pool
-    const pipedPool = [
-      'https://api.piped.private.coffee',
-      'https://pipedapi.kavin.rocks',
-      'https://pipedapi.tokhmi.xyz',
-    ];
-
-    for (const base of pipedPool) {
-      try {
-        const searchUrl = `${base}/search?q=${encodeURIComponent(searchPhrase)}&filter=music_songs`;
-        const searchRes = await fetch(searchUrl, { signal: AbortSignal.timeout(2500) });
-        if (searchRes.ok) {
-          const json = await searchRes.json();
-          const items = json.items || [];
-          const validItem = items.find((i) => {
-            const dur = Number(i.duration || 0);
-            return dur >= 90 && dur <= 900;
-          });
-
-          if (validItem && validItem.url) {
-            const videoId = validItem.url.split('v=')[1] || validItem.url.replace('/watch?v=', '');
-            if (videoId) {
-              const streamRes = await fetch(`${base}/streams/${videoId}`, {
-                signal: AbortSignal.timeout(2500),
-              });
-              if (streamRes.ok) {
-                const streamData = await streamRes.json();
-                const audioStreams = (streamData.audioStreams || []).sort(
-                  (a, b) => (b.bitrate || 0) - (a.bitrate || 0)
-                );
-                if (audioStreams.length > 0 && audioStreams[0].url) {
-                  return {
-                    url: audioStreams[0].url,
-                    duration: Number(validItem.duration),
-                  };
-                }
-              }
-            }
-          }
-        }
-      } catch (e) {
-        // Continue
-      }
-    }
-
-    return null;
-  }
-
-  // Source A: Try JioSaavn with exact cleaned title + artist
-  let result = await queryJioSaavn(cleanTitle, cleanArtist);
-  if (result?.url) {
-    streamCache.set(cacheKey, result.url);
-    return result.url;
-  }
-
-  // Source B: Try YouTube Pool with exact cleaned title + artist
-  result = await queryYouTubePool(cleanTitle, cleanArtist);
-  if (result?.url) {
-    streamCache.set(cacheKey, result.url);
-    return result.url;
-  }
-
-  // Source C: Retry once with broadened simplified keywords
-  const simplifiedArtist = cleanArtist.split(' ')[0];
-  result = await queryJioSaavn(cleanTitle, simplifiedArtist);
-  if (result?.url) {
-    streamCache.set(cacheKey, result.url);
-    return result.url;
-  }
-
-  result = await queryYouTubePool(cleanTitle, simplifiedArtist);
-  if (result?.url) {
-    streamCache.set(cacheKey, result.url);
-    return result.url;
-  }
-
-  // Last-Ditch Fallback: Return original audioUrl if no full stream could be found
+  // Fallback: If fallbackUrl provided and valid, return it
   if (fallbackUrl) {
     streamCache.set(cacheKey, fallbackUrl);
     return fallbackUrl;

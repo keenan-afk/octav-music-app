@@ -175,14 +175,12 @@ export function useAudioController(user = null, region = 'ID') {
     audio.mozPreservesPitch = true;
     audio.webkitPreservesPitch = true;
 
-    audioRef.current = audio;
+    // Critical iOS Safari requirements for lockscreen & background playback
+    audio.playsInline = true;
+    audio.setAttribute('playsinline', 'true');
+    audio.setAttribute('webkit-playsinline', 'true');
 
-    // Connect Web Audio Equalizer & Spatial Engine
-    try {
-      audioEqualizer.init(audio);
-    } catch (e) {
-      console.warn('Equalizer init deferred:', e);
-    }
+    audioRef.current = audio;
 
     const handleLoadedMetadata = () => {
       // True Track Duration from Full Audio Stream
@@ -193,6 +191,16 @@ export function useAudioController(user = null, region = 'ID') {
       }
       setIsLoading(false);
       audio.playbackRate = playbackSpeed;
+
+      if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession && audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: Math.max(0, audio.duration),
+            playbackRate: audio.playbackRate || 1.0,
+            position: Math.min(Math.max(0, audio.currentTime || 0), audio.duration),
+          });
+        } catch (e) {}
+      }
     };
 
     const handleWaiting = () => setIsLoading(true);
@@ -268,10 +276,18 @@ export function useAudioController(user = null, region = 'ID') {
     if (isPlaying) {
       audio.pause();
       setIsPlaying(false);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused';
+      }
     } else {
       audio
         .play()
-        .then(() => setIsPlaying(true))
+        .then(() => {
+          setIsPlaying(true);
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'playing';
+          }
+        })
         .catch((err) => {
           console.warn('Playback failed:', err);
           setIsPlaying(false);
@@ -352,6 +368,17 @@ export function useAudioController(user = null, region = 'ID') {
     async (track, queue) => {
       if (!track) return;
       const audio = audioRef.current;
+
+      // If clicked track is ALREADY current track, toggle play/pause instead of restarting!
+      if (
+        currentTrack &&
+        (currentTrack.id === track.id ||
+          (currentTrack.title?.toLowerCase() === track.title?.toLowerCase() &&
+            currentTrack.artist?.toLowerCase() === track.artist?.toLowerCase()))
+      ) {
+        togglePlayPause();
+        return;
+      }
 
       // 1. Immediately update active track info and UI state
       setCurrentTrack(track);

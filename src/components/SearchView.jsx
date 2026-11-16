@@ -299,7 +299,13 @@ export function SearchView({
                 return (
                   <div
                     key={track.id}
-                    onClick={() => onSelectTrack(track, results)}
+                    onClick={() => {
+                      if (isThisSelected) {
+                        onTogglePlayPause?.();
+                      } else {
+                        onSelectTrack(track, results);
+                      }
+                    }}
                     className={`group relative flex items-center justify-between p-2 rounded-xl cursor-pointer transition-all duration-150 active:scale-[0.99] border ${
                       isThisSelected
                         ? 'bg-white/[0.08] border-white/[0.08]'

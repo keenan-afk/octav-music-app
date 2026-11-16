@@ -614,6 +614,13 @@ export function NowPlayingSheet({
             </div>
           </LiquidSurface>
         </div>
+
+        {/* Footer & Copyright by Keenan */}
+        <div className="w-full max-w-[340px] pt-6 pb-12 flex flex-col items-center justify-center gap-1 opacity-40 hover:opacity-80 transition-opacity">
+          <p className="text-[10px] font-semibold text-white/60 tracking-wider">
+            Octav Music • Designed & Engineered by Keenan
+          </p>
+        </div>
       </div>
     </div>
   );

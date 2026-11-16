@@ -343,7 +343,13 @@ export function PlaylistDetailView({
               return (
                 <div
                   key={`${track.id}-${idx}`}
-                  onClick={() => onSelectTrack(track)}
+                  onClick={() => {
+                    if (isThisTrackSelected) {
+                      onTogglePlayPause();
+                    } else {
+                      onSelectTrack(track, filteredTracks);
+                    }
+                  }}
                   className={`group relative flex items-center justify-between py-2 px-2.5 rounded-xl cursor-pointer transition-all duration-150 active:scale-[0.99] ${
                     isThisTrackSelected
                       ? 'bg-white/[0.08] border border-white/[0.06]'

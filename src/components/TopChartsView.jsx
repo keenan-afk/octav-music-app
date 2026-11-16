@@ -204,7 +204,13 @@ export function TopChartsView({
               return (
                 <div
                   key={`${track.id}-${idx}`}
-                  onClick={() => onSelectTrack(track, tracks)}
+                  onClick={() => {
+                    if (isCurrent) {
+                      onTogglePlayPause?.();
+                    } else {
+                      onSelectTrack(track, tracks);
+                    }
+                  }}
                   className={`group flex items-center justify-between p-2 rounded-2xl cursor-pointer transition-all active:scale-[0.99] ${
                     isCurrent ? 'bg-white/[0.1] border border-[#1ed760]/30' : 'hover:bg-white/[0.05]'
                   }`}
