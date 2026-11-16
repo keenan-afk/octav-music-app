@@ -226,6 +226,13 @@ const SONG_CHORDS_DB = {
     chords: ['C', 'Em', 'F', 'G', 'Dm', 'Am'],
     verified: true,
   },
+  'istana bintang': {
+    key: 'C Major',
+    tuning: 'Standard E',
+    bpm: 115,
+    chords: ['C', 'Em', 'F', 'Dm', 'G', 'Am'],
+    verified: true,
+  },
   'satu bulan': {
     key: 'F Major',
     tuning: 'Standard E',

@@ -222,7 +222,7 @@ export function StatsModal({ isOpen, onClose, onShowToast }) {
               Total Pure Audio
             </span>
             <h3 className="text-2xl font-black text-white">{totalMinutes} Minutes</h3>
-            <p className="text-[11px] text-white/60">{stats.playsCount || 28} songs played</p>
+            <p className="text-[11px] text-white/60">{stats.playsCount || 0} songs played</p>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-[#1ed760]/20 flex items-center justify-center text-[#1ed760]">
             <Trophy className="w-6 h-6" />
