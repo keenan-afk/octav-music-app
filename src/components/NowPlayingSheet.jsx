@@ -456,16 +456,16 @@ export function NowPlayingSheet({
           </button>
         </div>
 
-        {/* Secondary Bar: Spatial Audio Badge, Musician Jam Studio & Share */}
+        {/* Secondary Bar: Equalizer, Jam Studio & Share */}
         <div className="w-full max-w-[340px] flex items-center justify-between pb-6 text-white/60 border-b border-white/[0.06]">
           <div className="flex items-center gap-2">
             <div
               onClick={onOpenEQ || onOpenSpatialAudio}
               className="flex items-center gap-1.5 text-xs font-semibold text-[#1ed760] hover:text-emerald-300 transition-colors cursor-pointer"
-              title="Open 5-Band Master Equalizer & IEM Presets"
+              title="Equalizer"
             >
               <Sliders className="w-3.5 h-3.5" />
-              <span>5-Band EQ</span>
+              <span>Equalizer</span>
             </div>
 
             <button
@@ -482,7 +482,7 @@ export function NowPlayingSheet({
             <button
               onClick={onOpenEQ || onOpenSpatialAudio}
               className="p-1 text-white/60 hover:text-white active:scale-90 transition-transform cursor-pointer"
-              title="5-Band Master Equalizer"
+              title="Equalizer"
             >
               <Sliders className="w-4 h-4" />
             </button>
@@ -503,7 +503,7 @@ export function NowPlayingSheet({
           </div>
         </div>
 
-        {/* Time-Synced Lyrics Card (Frosted Tinted Glass) */}
+        {/* Lyrics Card (Frosted Tinted Glass) */}
         <div className="w-full max-w-[340px] mt-6">
           <LiquidSurface
             className="p-5 rounded-2xl"
@@ -521,14 +521,11 @@ export function NowPlayingSheet({
                 <button
                   onClick={onOpenLyricsShare}
                   className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20 text-white/90 border border-white/15 active:scale-95 transition-all"
-                  title="Create 9:16 Story Card"
+                  title="Share lyrics"
                 >
                   <Sparkles className="w-3 h-3 text-[#1ed760]" />
-                  <span>Share Card</span>
+                  <span>Share</span>
                 </button>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#1ed760]/20 text-[#1ed760] border border-[#1ed760]/30">
-                  Synced LRCLIB
-                </span>
               </div>
             </div>
 
@@ -557,7 +554,7 @@ export function NowPlayingSheet({
                 })
               ) : (
                 <p className="text-sm text-white/40 italic py-4 text-center">
-                  Searching synchronized lyrics from LRCLIB...
+                  Loading lyrics...
                 </p>
               )}
             </div>

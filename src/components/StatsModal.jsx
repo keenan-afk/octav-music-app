@@ -114,7 +114,7 @@ export function StatsModal({ isOpen, onClose, onShowToast }) {
       ctx.fillStyle = '#1ed760';
       ctx.fillText(`${totalMinutes} Minutes`, cardX + 85, cardY + 236);
       ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-      ctx.fillText('• Pure Sound', cardX + 260, cardY + 236);
+      ctx.fillText('• Octav', cardX + 260, cardY + 236);
 
       // Top 5 Songs List
       let trackY = cardY + 330;
@@ -219,7 +219,7 @@ export function StatsModal({ isOpen, onClose, onShowToast }) {
         <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/60 to-black/60 border border-[#1ed760]/30 flex items-center justify-between">
           <div>
             <span className="text-[10px] font-black uppercase tracking-wider text-[#1ed760]">
-              Total Pure Audio
+              Total Listening Time
             </span>
             <h3 className="text-2xl font-black text-white">{totalMinutes} Minutes</h3>
             <p className="text-[11px] text-white/60">{stats.playsCount || 0} songs played</p>

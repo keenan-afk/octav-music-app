@@ -136,13 +136,10 @@ export function AudioEQModal({ isOpen, onClose, onShowToast }) {
               <Sliders className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-black tracking-tight flex items-center gap-2">
-                <span>5-Band Master EQ</span>
-                <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-[#1ed760]/20 text-[#1ed760] border border-[#1ed760]/30">
-                  STUDIO
-                </span>
+              <h2 className="text-lg font-black tracking-tight">
+                Equalizer
               </h2>
-              <p className="text-xs text-white/50">Precision Biquad Filters • 60Hz to 14kHz</p>
+              <p className="text-xs text-white/50">Adjust sound frequencies</p>
             </div>
           </div>
           <button

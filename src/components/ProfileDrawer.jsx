@@ -80,9 +80,12 @@ export function ProfileDrawer({
 
   const [audioQuality, setAudioQuality] = useState(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY_AUDIO_QUALITY) || '320kbps High (Ultra)';
+      const stored = localStorage.getItem(STORAGE_KEY_AUDIO_QUALITY);
+      if (stored === 'Data Saver' || stored?.includes('96kbps')) return 'Data Saver';
+      if (stored === 'Normal' || stored?.includes('Lossless')) return 'Normal';
+      return 'High';
     } catch {
-      return '320kbps High (Ultra)';
+      return 'High';
     }
   });
 
@@ -153,7 +156,7 @@ export function ProfileDrawer({
     try {
       localStorage.setItem(STORAGE_KEY_AUDIO_QUALITY, quality);
     } catch (e) {}
-    onShowToast?.(`Audio stream quality set to ${quality}`);
+    onShowToast?.(`Audio quality set to ${quality}`);
   };
 
   const handleClearCache = () => {
@@ -332,10 +335,10 @@ export function ProfileDrawer({
                 <div className="p-3.5 rounded-2xl bg-gradient-to-r from-[#1ed760]/15 via-emerald-500/10 to-transparent border border-[#1ed760]/30 flex flex-col gap-2 mb-1 shadow-lg">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-[#1ed760]" />
-                    <span className="text-xs font-bold text-white">Sync Your Music Library</span>
+                    <span className="text-xs font-bold text-white">Save Your Music Library</span>
                   </div>
                   <p className="text-[11px] text-white/60 leading-tight">
-                    Sign in or create an account to back up liked tracks, playlists, and artists to the cloud.
+                    Sign in or create an account to back up your liked tracks, playlists, and artists.
                   </p>
                   <button
                     onClick={() => {
@@ -408,7 +411,7 @@ export function ProfileDrawer({
                     <Headphones className="w-4 h-4" />
                   </div>
                   <div>
-                    <span className="text-xs font-bold text-white block">Audio Stream Quality</span>
+                    <span className="text-xs font-bold text-white block">Audio Quality</span>
                     <span className="text-[11px] text-[#1ed760] font-semibold">{audioQuality}</span>
                   </div>
                 </div>
@@ -454,7 +457,7 @@ export function ProfileDrawer({
                 </div>
               </div>
 
-              {/* 5-Band Master Equalizer & Sound Signature */}
+              {/* Equalizer */}
               <button
                 onClick={() => {
                   onClose?.();
@@ -467,9 +470,9 @@ export function ProfileDrawer({
                     <Sliders className="w-4 h-4" />
                   </div>
                   <div>
-                    <span className="text-xs font-bold text-white block">5-Band Master EQ</span>
+                    <span className="text-xs font-bold text-white block">Equalizer</span>
                     <span className="text-[11px] text-white/50 font-medium">
-                      Audiophile & IEM Presets
+                      Sound presets & equalizer
                     </span>
                   </div>
                 </div>
@@ -550,9 +553,9 @@ export function ProfileDrawer({
               </div>
 
               {[
-                { label: '320kbps High (Ultra)', desc: 'Full bit-rate crystal AAC/MP4 stream' },
-                { label: 'Lossless Spatial Master', desc: 'Precision 5-band acoustic EQ tuned' },
-                { label: 'Data Saver (96kbps)', desc: 'Optimized for slow connections' },
+                { label: 'High', desc: 'Clear audio streaming' },
+                { label: 'Normal', desc: 'Standard streaming quality' },
+                { label: 'Data Saver', desc: 'Optimized for slower connections' },
               ].map((opt) => {
                 const isSelected = audioQuality === opt.label;
                 return (

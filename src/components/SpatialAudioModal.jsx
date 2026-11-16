@@ -149,7 +149,7 @@ export function SpatialAudioModal({ isOpen, onClose, isPlaying }) {
                 Spatial Audio & EQ
               </h2>
               <p className="text-[10px] text-white/50 font-semibold">
-                Octav High-Resolution Acoustic Engine
+                Sound presets & effects
               </p>
             </div>
           </div>
@@ -167,10 +167,7 @@ export function SpatialAudioModal({ isOpen, onClose, isPlaying }) {
         <div className="mb-4 p-3 rounded-2xl bg-white/[0.04] border border-white/[0.06]">
           <div className="flex items-center justify-between mb-2.5">
             <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-white">3D Spatial Headstage</span>
-              <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-[#1ed760]/20 text-[#1ed760] border border-[#1ed760]/30">
-                PRO
-              </span>
+              <span className="text-xs font-bold text-white">Spatial Audio</span>
             </div>
 
             {/* Tactile visionOS Glass Switch */}
@@ -196,7 +193,7 @@ export function SpatialAudioModal({ isOpen, onClose, isPlaying }) {
           {/* Spatial Mode Pills */}
           <div className="grid grid-cols-3 gap-1.5">
             {[
-              { id: 'stereo', label: 'Binaural' },
+              { id: 'stereo', label: 'Wide Stereo' },
               { id: 'studio', label: 'Studio' },
               { id: 'vision', label: 'Immersive 3D' },
             ].map((m) => {

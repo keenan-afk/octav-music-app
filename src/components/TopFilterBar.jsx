@@ -38,7 +38,7 @@ export function TopFilterBar({
         <button
           onClick={onProfileClick}
           className="relative flex-shrink-0 w-8 h-8 rounded-full overflow-hidden p-0.5 group active:scale-95 transition-transform cursor-pointer"
-          title={isAuthenticated ? `${displayName} (Synced)` : "Account Profile"}
+          title={isAuthenticated ? displayName : "Account Profile"}
         >
           <div
             className={`absolute inset-0 rounded-full ${

@@ -255,7 +255,7 @@ export function SearchView({
             {results.length > 0 && (
               <span className="text-[11px] font-semibold text-[#1ed760] flex items-center gap-1">
                 <Sparkles className="w-3 h-3" />
-                {region === 'ID' ? 'ID Regional Index' : 'Global Index'}
+                {region === 'ID' ? 'Indonesia' : 'Global'}
               </span>
             )}
           </div>
@@ -433,7 +433,7 @@ export function SearchView({
                   <span>Trending in {region === 'ID' ? 'Indonesia' : 'Global'}</span>
                 </div>
                 <span className="text-[10px] text-white/40 font-semibold">
-                  Tap to stream
+                  Tap to play
                 </span>
               </div>
 

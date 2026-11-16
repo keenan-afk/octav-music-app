@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Play, Pause, Heart, Cast, Laptop, ListMusic } from 'lucide-react';
+import { Play, Pause, Heart, Cast, ListMusic } from 'lucide-react';
 import { LiquidSurface } from './LiquidGlassFilter';
 import { SmartArtwork } from './SmartArtwork';
 import gsap from 'gsap';
@@ -50,11 +50,6 @@ export function MiniPlayerIsland({
     if (onOpenSpatialAudio) onOpenSpatialAudio();
   };
 
-  const handleSpatialClick = (e) => {
-    e.stopPropagation();
-    if (onOpenSpatialAudio) onOpenSpatialAudio();
-  };
-
   if (!currentTrack) return null;
 
   return (
@@ -94,32 +89,14 @@ export function MiniPlayerIsland({
               />
             </div>
 
-            {/* Title & Artist with razor-sharp contrast */}
+            {/* Title & Artist */}
             <div className="min-w-0 flex-1 overflow-hidden">
-              <div className="flex items-center gap-1.5 overflow-hidden">
-                <span className="text-xs font-extrabold text-white truncate leading-tight drop-shadow-sm group-hover:text-[#1ed760] transition-colors">
-                  {currentTrack.title}
-                </span>
-                <span className="text-white/40 text-[10px]">•</span>
-                <span className="text-xs font-semibold text-white/70 truncate leading-tight">
-                  {currentTrack.artist}
-                </span>
-              </div>
-
-              {/* Tappable Audio Quality Badge */}
-              <div
-                onClick={handleSpatialClick}
-                className="inline-flex items-center gap-1 text-[10px] text-[#1ed760] font-semibold mt-0.5 tracking-tight hover:text-emerald-300 transition-colors cursor-pointer"
-                title="Tap to open 5-Band Equalizer & Spatial Audio"
-              >
-                <Laptop className="w-2.5 h-2.5" />
-                <span>
-                  {typeof localStorage !== 'undefined' &&
-                  localStorage.getItem('octav_audio_quality')?.includes('96kbps')
-                    ? 'Data Saver • 96kbps'
-                    : 'Octav Master • 320kbps'}
-                </span>
-              </div>
+              <p className="text-xs font-bold text-white truncate leading-tight drop-shadow-sm group-hover:text-[#1ed760] transition-colors">
+                {currentTrack.title}
+              </p>
+              <p className="text-[11px] font-medium text-white/70 truncate leading-tight mt-0.5">
+                {currentTrack.artist}
+              </p>
             </div>
           </div>
 
@@ -129,7 +106,7 @@ export function MiniPlayerIsland({
             <button
               onClick={handleCastClick}
               className="p-1.5 text-white/50 hover:text-white active:scale-90 transition-all cursor-pointer"
-              title="Connect to a device / Spatial Audio"
+              title="Connect to a device"
             >
               <Cast className="w-4 h-4" />
             </button>

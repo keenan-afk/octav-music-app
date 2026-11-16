@@ -296,7 +296,7 @@ export function PracticeStudioModal({
     {
       id: 'normal',
       label: 'Normal Mix',
-      desc: 'Balanced master audio',
+      desc: 'Original sound balance',
       icon: Sliders,
     },
     {
@@ -593,7 +593,7 @@ export function PracticeStudioModal({
             })}
           </div>
 
-          {/* Quick shortcut to 5-Band Master EQ */}
+          {/* Quick shortcut to Equalizer */}
           <button
             onClick={() => {
               onClose?.();
@@ -603,13 +603,13 @@ export function PracticeStudioModal({
           >
             <div className="flex items-center gap-2">
               <Sliders className="w-4 h-4 text-[#1ed760]" />
-              <span>Open 5-Band Master EQ & IEM Presets</span>
+              <span>Open Equalizer</span>
             </div>
             <span className="text-[10px] text-[#1ed760] font-bold">Adjust dB →</span>
           </button>
         </div>
 
-        {/* SECTION 4: WEB AUDIO FREQUENCY ISOLATOR */}
+        {/* SECTION 4: FREQUENCY ISOLATOR */}
         <div className="p-4 rounded-2xl bg-white/[0.04] border border-white/10 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-white/70 flex items-center gap-1.5">
@@ -642,7 +642,7 @@ export function PracticeStudioModal({
             })}
           </div>
 
-          {/* Quick shortcut to 5-Band Master EQ */}
+          {/* Quick shortcut to Equalizer */}
           <button
             onClick={() => {
               onClose?.();
@@ -652,7 +652,7 @@ export function PracticeStudioModal({
           >
             <div className="flex items-center gap-2">
               <Sliders className="w-4 h-4 text-[#1ed760]" />
-              <span>Open 5-Band Master EQ & IEM Presets</span>
+              <span>Open Equalizer</span>
             </div>
             <span className="text-[10px] text-[#1ed760] font-bold">Adjust dB →</span>
           </button>

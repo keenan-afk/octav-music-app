@@ -439,7 +439,7 @@ export function ArtistProfileSheet({
               <p className="text-xs text-white/70 leading-relaxed">
                 {artistName} is one of the most recognized voices in {artistData.genre || 'contemporary music'},
                 loved by millions of listeners across {region === 'ID' ? 'Indonesia' : 'the world'}.
-                All tracks streamed in full lossless bit-rate on Octav.
+                Listen to their popular songs and full albums on Octav.
               </p>
               <div className="flex items-center gap-2 pt-2 border-t border-white/10 text-[11px] text-white/50">
                 <span className="w-2 h-2 rounded-full bg-[#1ed760]" />

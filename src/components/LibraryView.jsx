@@ -108,7 +108,7 @@ export function LibraryView({
           <button
             onClick={onProfileClick}
             className="relative w-8 h-8 rounded-full overflow-hidden border border-white/20 hover:border-white/50 active:scale-95 transition-all shadow-sm bg-neutral-800 flex items-center justify-center cursor-pointer"
-            title={isAuthenticated ? `${user.displayName} (Synced)` : "Open Profile"}
+            title={isAuthenticated ? user.displayName : "Open Profile"}
           >
             {user?.avatar ? (
               <img src={user.avatar} alt={user.displayName} className="w-full h-full object-cover rounded-full" />

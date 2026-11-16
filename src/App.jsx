@@ -472,7 +472,7 @@ export function App() {
           onOpenEQ={() => setIsAudioEQOpen(true)}
         />
 
-        {/* 5-Band Studio Master Equalizer & IEM Presets Modal */}
+        {/* Equalizer Modal */}
         <AudioEQModal
           isOpen={isAudioEQOpen}
           onClose={() => setIsAudioEQOpen(false)}
@@ -492,7 +492,7 @@ export function App() {
           onClearQueue={audio.clearQueue}
         />
 
-        {/* Viral Lyrics Story Card Generator */}
+        {/* Lyrics Story Card Generator */}
         <LyricsShareModal
           isOpen={isLyricsShareOpen}
           onClose={() => setIsLyricsShareOpen(false)}
@@ -500,7 +500,7 @@ export function App() {
           onShowToast={showToast}
         />
 
-        {/* Octav Liquid Glass Authentication & Cloud Sync Modal */}
+        {/* Authentication Modal */}
         <AuthModal onShowToast={showToast} />
 
         {/* Single-Instance Liquid Glass Floating Toast (Strictly once, no infinite loops) */}

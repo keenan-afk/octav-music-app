@@ -14,32 +14,32 @@ const STORAGE_KEY_EQ_PRESET = 'octav_audio_eq_preset';
 export const EQ_PRESETS = {
   flat: {
     id: 'flat',
-    name: 'Flat / IEM Reference',
-    desc: 'Uncolored reference curve for critical listening & IEM monitors',
+    name: 'Balanced',
+    desc: 'Clean, neutral sound profile',
     values: { sub: 0, bass: 0, mid: 0, highMid: 0, treble: 0 },
   },
   rock: {
     id: 'rock',
-    name: 'Rock & Metal',
-    desc: 'Thick kick, punchy low-end, scooped mids & searing guitar bite',
+    name: 'Rock',
+    desc: 'Punchy bass with clear highs',
     values: { sub: 5, bass: 3, mid: -2, highMid: 4, treble: 5 },
   },
   vocal: {
     id: 'vocal',
-    name: 'Vocal & Acoustic',
-    desc: 'Warm acoustic guitars, intimate vocals & reduced rumble',
+    name: 'Vocal',
+    desc: 'Clear vocals and acoustic instruments',
     values: { sub: -2, bass: 0, mid: 4, highMid: 3, treble: 2 },
   },
   warm: {
     id: 'warm',
-    name: 'Late Night Warm',
-    desc: 'Deep velvety low-end with rolled-off highs to prevent ear fatigue',
+    name: 'Warm',
+    desc: 'Smooth low-end and gentle highs',
     values: { sub: 3, bass: 3, mid: 1, highMid: -2, treble: -4 },
   },
   custom: {
     id: 'custom',
     name: 'Custom',
-    desc: 'User-tailored 5-band master curve',
+    desc: 'Personalized equalizer profile',
     values: { sub: 0, bass: 0, mid: 0, highMid: 0, treble: 0 },
   },
 };

@@ -120,7 +120,7 @@ export function AuthModal({ onShowToast }) {
         err.message?.toLowerCase().includes('validation_failed')
       ) {
         setErrorMessage(
-          'Google Provider belum diaktifkan di Supabase dashboard. Aktifkan di menu Authentication > Providers > Google, atau gunakan akun tes di bawah.'
+          'Login Google belum dapat digunakan saat ini. Silakan gunakan akun tes atau email/password.'
         );
         setIsGoogleChooserOpen(true);
       } else {
@@ -188,12 +188,12 @@ export function AuthModal({ onShowToast }) {
 
           <div className="text-center pt-1">
             <h2 className="text-xl font-extrabold text-white tracking-tight">
-              {mode === 'signin' ? 'Welcome to Pure Audio' : 'Create your Octav Account'}
+              {mode === 'signin' ? 'Welcome to Octav' : 'Create your Octav Account'}
             </h2>
             <p className="text-xs text-white/60 mt-0.5">
               {mode === 'signin'
-                ? 'Sign in to access your cloud library & playlists'
-                : 'Join Octav for lossless streaming & personal mixes'}
+                ? 'Sign in to access your saved library & playlists'
+                : 'Join Octav to save your music and playlists'}
             </p>
           </div>
 
@@ -361,7 +361,7 @@ export function AuthModal({ onShowToast }) {
               onClick={closeAuthModal}
               className="text-xs text-white/50 hover:text-white transition-colors cursor-pointer"
             >
-              Continue as Guest (No Cloud Sync)
+              Continue as Guest
             </button>
           </div>
         </div>
