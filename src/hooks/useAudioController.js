@@ -153,6 +153,15 @@ export function useAudioController(user = null, region = 'ID') {
   const isFetchingRadioRef = useRef(false);
   const handleNextTrackRef = useRef();
   const playTrackRef = useRef();
+  const togglePlayPauseRef = useRef();
+  const handlePrevTrackRef = useRef();
+  const seekToRef = useRef();
+  const isManualPauseRef = useRef(false);
+
+  const isPlayingRef = useRef(isPlaying);
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
 
   const repeatModeRef = useRef(repeatMode);
   useEffect(() => {
@@ -163,10 +172,33 @@ export function useAudioController(user = null, region = 'ID') {
   const likedTrackIds = new Set(likedTracks.map((t) => t.id));
   const isLiked = currentTrack ? likedTrackIds.has(currentTrack.id) : false;
 
+  // Ahead-of-time stream pre-resolution for upcoming tracks in queue (Zero stutter, instant iOS transition)
+  useEffect(() => {
+    if (!currentTrack || !playlistQueue || playlistQueue.length === 0) return;
+    const currIdx = playlistQueue.findIndex((t) => t.id === currentTrack.id);
+    const startIdx = currIdx >= 0 ? currIdx + 1 : 0;
+    const upcoming = playlistQueue.slice(startIdx, startIdx + 3);
+
+    upcoming.forEach((track) => {
+      if (track && (!track.audioUrl || track.audioUrl.includes('audio-ssl.itunes.apple.com'))) {
+        resolveFullAudioStream(track)
+          .then((resolvedUrl) => {
+            if (resolvedUrl) {
+              track.audioUrl = resolvedUrl;
+              setPlaylistQueue((prev) =>
+                prev.map((t) => (t.id === track.id ? { ...t, audioUrl: resolvedUrl } : t))
+              );
+            }
+          })
+          .catch(() => {});
+      }
+    });
+  }, [currentTrack?.id, playlistQueue.length]);
+
   // Initialize HTML5 Audio Element
   useEffect(() => {
     const audio = new Audio();
-    audio.preload = 'metadata';
+    audio.preload = 'auto';
     audio.volume = volume;
     audio.playbackRate = playbackSpeed;
 
@@ -242,6 +274,19 @@ export function useAudioController(user = null, region = 'ID') {
       }
     };
 
+    const handlePause = () => {
+      if (isManualPauseRef.current) {
+        isManualPauseRef.current = false;
+        return;
+      }
+      // Auto-recover if iOS paused audio unexpectedly in the background while state is active
+      if (isPlayingRef.current && !audio.ended && audio.currentTime > 0) {
+        audio.play().catch(() => {
+          setIsPlaying(false);
+        });
+      }
+    };
+
     const handleError = () => {
       console.warn('Audio playback error encountered on stream URL:', audio.src);
       setIsLoading(false);
@@ -253,6 +298,7 @@ export function useAudioController(user = null, region = 'ID') {
     audio.addEventListener('canplay', handleCanPlay);
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('pause', handlePause);
     audio.addEventListener('error', handleError);
 
     return () => {
@@ -262,6 +308,7 @@ export function useAudioController(user = null, region = 'ID') {
       audio.removeEventListener('canplay', handleCanPlay);
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('pause', handlePause);
       audio.removeEventListener('error', handleError);
     };
   }, []);
@@ -274,12 +321,14 @@ export function useAudioController(user = null, region = 'ID') {
     audioEqualizer.resume();
 
     if (isPlaying) {
+      isManualPauseRef.current = true;
       audio.pause();
       setIsPlaying(false);
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'paused';
       }
     } else {
+      isManualPauseRef.current = false;
       audio
         .play()
         .then(() => {
@@ -294,6 +343,7 @@ export function useAudioController(user = null, region = 'ID') {
         });
     }
   }, [isPlaying, currentTrack]);
+  togglePlayPauseRef.current = togglePlayPause;
 
   // Compute session blacklist: current track + last 40 played tracks FIFO + all tracks sitting in queue
   const getSessionPlayedKeys = useCallback(() => {
@@ -344,7 +394,7 @@ export function useAudioController(user = null, region = 'ID') {
 
           // If autoPlayNext requested (queue ended without repeat), seamlessly start next recommendation
           if (autoPlayNext && newlyAppended.length > 0) {
-            playTrackRef.current?.(newlyAppended[0]);
+            playTrackRef.current?.(newlyAppended[0], undefined, true);
           }
         } else if (autoPlayNext) {
           setIsLoading(false);
@@ -365,12 +415,13 @@ export function useAudioController(user = null, region = 'ID') {
 
   // Play specific track by object (BUG 1 FIX: ZERO PREVIEW PRE-PLAY, ONLY FULL-LENGTH STREAMS)
   const playTrack = useCallback(
-    async (track, queue) => {
+    async (track, queue, fromEnded = false) => {
       if (!track) return;
       const audio = audioRef.current;
 
       // If clicked track is ALREADY current track, toggle play/pause instead of restarting!
       if (
+        !fromEnded &&
         currentTrack &&
         (currentTrack.id === track.id ||
           (currentTrack.title?.toLowerCase() === track.title?.toLowerCase() &&
@@ -442,8 +493,16 @@ export function useAudioController(user = null, region = 'ID') {
         triggerAutoQueue(track, false);
       }
 
+      // iOS Safari Synchronous Gesture Continuity:
+      // When transitioning from an ended track, immediately set the source if available and trigger play()
+      if (fromEnded && audio && track.audioUrl) {
+        audio.src = track.audioUrl;
+        audio.playbackRate = playbackSpeed;
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+      }
+
       // 2. CRITICAL BUG 1 FIX: Resolve 100% Full-Length Audio Stream (>=90s)
-      // NEVER assign audio.src to 30s previewUrl first! Only assign audio.src once resolved.
       audioEqualizer.resume();
 
       try {
@@ -451,9 +510,11 @@ export function useAudioController(user = null, region = 'ID') {
         const finalUrl = fullStreamUrl || track.audioUrl || track.previewUrl;
 
         if (audio) {
-          audio.src = finalUrl;
-          audio.playbackRate = playbackSpeed;
-          audio.currentTime = 0;
+          if (audio.src !== finalUrl) {
+            audio.src = finalUrl;
+            audio.playbackRate = playbackSpeed;
+            audio.currentTime = 0;
+          }
 
           if (crossfadeDuration > 0) {
             audio.volume = 0;
@@ -497,7 +558,7 @@ export function useAudioController(user = null, region = 'ID') {
         setIsLoading(false);
       }
     },
-    [playbackSpeed, volume, playlistQueue, user?.id, triggerAutoQueue]
+    [playbackSpeed, volume, playlistQueue, user?.id, triggerAutoQueue, crossfadeDuration, togglePlayPause, currentTrack]
   );
   playTrackRef.current = playTrack;
 
@@ -513,13 +574,13 @@ export function useAudioController(user = null, region = 'ID') {
         const remaining = queue.filter((t, idx) => idx > currentIndex);
         if (remaining.length > 0) {
           const next = remaining[Math.floor(Math.random() * remaining.length)];
-          playTrack(next);
+          playTrack(next, undefined, fromEnded);
           if (remaining.length < 3) {
             triggerAutoQueue(next, false);
           }
         } else if (repeatMode === 'all') {
           const randomTrack = queue[Math.floor(Math.random() * queue.length)];
-          playTrack(randomTrack);
+          playTrack(randomTrack, undefined, fromEnded);
         } else {
           // End of shuffle queue without repeat: NEVER loop back to 0.
           // Trigger Infinite Radio and auto-play the next recommendation!
@@ -531,15 +592,16 @@ export function useAudioController(user = null, region = 'ID') {
       // Normal Sequential Progression
       if (currentIndex >= 0 && currentIndex < queue.length - 1) {
         const nextSong = queue[currentIndex + 1];
-        playTrack(nextSong);
+        playTrack(nextSong, undefined, fromEnded);
 
         // Proactively replenish if fewer than 3 upcoming tracks left
         if (queue.length - (currentIndex + 2) < 3) {
           triggerAutoQueue(nextSong, false);
         }
-      } else if (repeatMode === 'all') {
-        // User explicitly turned on repeat all
-        playTrack(queue[0]);
+      } else if (repeatMode === 'all' || (queue.length > 1 && !isShuffle)) {
+        // User turned on repeat all, or reached end of playlist/album:
+        // Seamlessly loop back to start so playlist never abruptly halts into silence!
+        playTrack(queue[0], undefined, fromEnded);
       } else {
         // Reached end of queue without repeat! NEVER loop back to index 0.
         // Advance forward into newly fetched Auto-Play recommendations!
@@ -601,6 +663,7 @@ export function useAudioController(user = null, region = 'ID') {
     const prevTrack = queue[prevIndex] || queue[0];
     if (prevTrack) playTrack(prevTrack);
   }, [playlistQueue, currentTrack, playTrack]);
+  handlePrevTrackRef.current = handlePrevTrack;
 
   // Seek
   const seekTo = useCallback(
@@ -614,6 +677,7 @@ export function useAudioController(user = null, region = 'ID') {
     },
     [duration]
   );
+  seekToRef.current = seekTo;
 
   // Playback Speed with Strict Pitch-Locking
   const setPlaybackSpeed = useCallback((speed) => {
@@ -734,28 +798,36 @@ export function useAudioController(user = null, region = 'ID') {
       });
 
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    } catch (e) {
+      console.warn('MediaSession metadata error:', e);
+    }
+  }, [currentTrack, isPlaying]);
 
+  // Persistent MediaSession action handlers (registered once on mount for iOS lockscreen resilience)
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+    try {
       navigator.mediaSession.setActionHandler('play', () => {
-        if (!isPlaying) togglePlayPause();
+        togglePlayPauseRef.current?.();
       });
       navigator.mediaSession.setActionHandler('pause', () => {
-        if (isPlaying) togglePlayPause();
+        togglePlayPauseRef.current?.();
       });
       navigator.mediaSession.setActionHandler('previoustrack', () => {
-        handlePrevTrack();
+        handlePrevTrackRef.current?.();
       });
       navigator.mediaSession.setActionHandler('nexttrack', () => {
-        handleNextTrack();
+        handleNextTrackRef.current?.(false);
       });
       navigator.mediaSession.setActionHandler('seekto', (details) => {
         if (details.seekTime != null) {
-          seekTo(details.seekTime);
+          seekToRef.current?.(details.seekTime);
         }
       });
     } catch (e) {
-      console.warn('MediaSession registration error:', e);
+      console.warn('MediaSession handler registration error:', e);
     }
-  }, [currentTrack, isPlaying, togglePlayPause, handlePrevTrack, handleNextTrack, seekTo]);
+  }, []);
 
   return {
     currentTrack,

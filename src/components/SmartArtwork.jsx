@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Disc, Music } from 'lucide-react';
+import { safeTimeoutSignal } from '../services/musicApi';
 
 // In-memory cache for auto-recovered artwork URLs
 const artworkCache = new Map();
@@ -65,7 +66,7 @@ export function SmartArtwork({
         term
       )}`;
 
-      const res = await fetch(url, { signal: AbortSignal.timeout(3500) });
+      const res = await fetch(url, { signal: safeTimeoutSignal(3500) });
       if (res.ok) {
         const data = await res.json();
         const results = data.results || [];

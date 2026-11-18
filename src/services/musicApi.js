@@ -27,6 +27,24 @@ const ORGANIC_PALETTES = [
 // In-memory cache for resolved full-length audio stream URLs
 const streamCache = new Map();
 
+/**
+ * Cross-platform timeout signal helper compatible with iOS Safari < 16 & older WebViews
+ */
+export function safeTimeoutSignal(ms = 4000) {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    try {
+      return AbortSignal.timeout(ms);
+    } catch {}
+  }
+  const controller = new AbortController();
+  setTimeout(() => {
+    try {
+      controller.abort();
+    } catch {}
+  }, ms);
+  return controller.signal;
+}
+
 function getPaletteForTrack(title = '', artist = '') {
   let hash = 0;
   const str = `${title} ${artist}`;
@@ -176,10 +194,12 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
     return streamCache.get(cacheKey);
   }
 
-  // Active High-Speed JioSaavn Mirrors (Concurrent Promise.any with 3000ms timeout)
-  const saavnMirrors = [
-    'https://jiosaavn-api-private.vercel.app/search/songs?q=',
-    'https://jiosaavn-api-taupe.vercel.app/search/songs?q=',
+  // Active High-Speed JioSaavn Mirror Resolvers with respective query param syntax
+  const mirrorEndpoints = [
+    (q) => `https://jiosaavn-api-private.vercel.app/search/songs?q=${encodeURIComponent(q)}&limit=15`,
+    (q) => `https://jiosaavn-api-2.vercel.app/search/songs?query=${encodeURIComponent(q)}&limit=15`,
+    (q) => `https://jiosaavn-api-taupe.vercel.app/search/songs?query=${encodeURIComponent(q)}&limit=15`,
+    (q) => `https://jiosaavn-api-unofficial.vercel.app/search/songs?query=${encodeURIComponent(q)}&limit=15`,
   ];
 
   // Try queries in priority order:
@@ -202,34 +222,53 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
     .map((w) => w.trim())
     .filter((w) => w.length >= 3 && !['the', 'and', 'band'].includes(w));
 
+  let candidateFallbackMatch = null;
+
   for (const q of distinctQueries) {
     try {
-      const res = await Promise.any(
-        saavnMirrors.map((m) =>
-          fetch(m + encodeURIComponent(q), { signal: AbortSignal.timeout(3000) }).then((r) => {
+      const settled = await Promise.allSettled(
+        mirrorEndpoints.map((getEndpoint) =>
+          fetch(getEndpoint(q), { signal: safeTimeoutSignal(3500) }).then((r) => {
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             return r.json();
           })
         )
       );
 
-      const songs = res?.data?.results || res?.results || [];
-      if (!Array.isArray(songs) || songs.length === 0) continue;
+      let songs = [];
+      for (const item of settled) {
+        if (item.status === 'fulfilled' && item.value) {
+          const list = item.value.data?.results || item.value.results || [];
+          if (Array.isArray(list) && list.length > 0) {
+            songs.push(...list);
+          }
+        }
+      }
 
-      // STRICT DURATION GUARD: Only accept full songs (>= 90s)
+      if (songs.length === 0) continue;
+
+      // Extract and verify against all JioSaavn response schemas
       const match = songs.find((s) => {
         const dur = Number(s.duration || 0);
         if (dur < 90) return false;
 
-        const sName = (s.name || s.title || '').toLowerCase().replace(/[^\w\s]/g, ' ');
+        const sName = (s.name || s.title || '')
+          .toLowerCase()
+          .replace(/[^\w\s]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
         const sSub = (s.subtitle || '').toLowerCase();
-        const primary = (s.artist_map?.primary_artists || [])
-          .map((a) => (a.name || '').toLowerCase())
-          .join(' ');
-        const allArtists = `${sSub} ${primary}`;
+        const primaryMap = (s.artist_map?.primary_artists || []).map((a) => (a.name || '').toLowerCase()).join(' ');
+        const allMap = (s.artist_map?.artists || []).map((a) => (a.name || '').toLowerCase()).join(' ');
+        const sPrimary = typeof s.primaryArtists === 'string' ? s.primaryArtists.toLowerCase() : '';
+        const sFeatured = typeof s.featuredArtists === 'string' ? s.featuredArtists.toLowerCase() : '';
+        const albumName = typeof s.album === 'string' ? s.album.toLowerCase() : (s.album?.name || '').toLowerCase();
+        const allArtists = `${sSub} ${primaryMap} ${allMap} ${sPrimary} ${sFeatured} ${albumName} ${sName}`;
 
         const cleanT = normTitle.toLowerCase();
-        const titleMatch = sName.includes(cleanT) || cleanT.includes(sName.trim());
+        const titleMatch = cleanT.length <= 4
+          ? new RegExp(`\\b${cleanT}\\b`, 'i').test(sName)
+          : (sName.includes(cleanT) || cleanT.includes(sName));
 
         let artistMatch = false;
         if (artistTokens.length === 0) {
@@ -238,11 +277,17 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
           artistMatch = artistTokens.some((tok) => allArtists.includes(tok));
         }
 
-        return titleMatch && artistMatch;
+        if (titleMatch && !candidateFallbackMatch) {
+          candidateFallbackMatch = s;
+        }
+
+        return titleMatch && (artistMatch || distinctQueries.length <= 1);
       });
 
-      if (match) {
-        const downloadList = match.downloadUrl || match.download_url || [];
+      const selectedSong = match || (candidateFallbackMatch && distinctQueries.indexOf(q) === distinctQueries.length - 1 ? candidateFallbackMatch : null);
+
+      if (selectedSong) {
+        const downloadList = selectedSong.downloadUrl || selectedSong.download_url || [];
         if (Array.isArray(downloadList) && downloadList.length > 0) {
           let qualityPref = '320kbps';
           try {
@@ -510,8 +555,8 @@ export async function searchMusic(rawQuery, region = 'ID') {
   )}`;
 
   const [songsResult, artistsResult] = await Promise.allSettled([
-    fetch(songsUrl, { signal: AbortSignal.timeout(4500) }).then((r) => r.json()),
-    fetch(artistsUrl, { signal: AbortSignal.timeout(4500) }).then((r) => r.json()),
+    fetch(songsUrl, { signal: safeTimeoutSignal(5000) }).then((r) => r.json()),
+    fetch(artistsUrl, { signal: safeTimeoutSignal(5000) }).then((r) => r.json()),
   ]);
 
   const rawSongs = songsResult.status === 'fulfilled' ? songsResult.value.results || [] : [];
@@ -705,8 +750,8 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
 
   try {
     const [songsRes, albumsRes] = await Promise.all([
-      fetch(songsUrl, { signal: AbortSignal.timeout(6000) }).then((r) => r.json()).catch(() => ({ results: [] })),
-      fetch(albumsUrl, { signal: AbortSignal.timeout(6000) }).then((r) => r.json()).catch(() => ({ results: [] })),
+      fetch(songsUrl, { signal: safeTimeoutSignal(6000) }).then((r) => r.json()).catch(() => ({ results: [] })),
+      fetch(albumsUrl, { signal: safeTimeoutSignal(6000) }).then((r) => r.json()).catch(() => ({ results: [] })),
     ]);
 
     const results = songsRes.results || [];
@@ -911,7 +956,7 @@ export async function fetchTopCharts(region = 'ID', limit = 50) {
   try {
     const regCode = (region || 'ID').toLowerCase();
     const url = `https://itunes.apple.com/${regCode}/rss/topsongs/limit=${limit}/json`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: safeTimeoutSignal(6000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const entries = data.feed?.entry || [];
@@ -959,7 +1004,7 @@ export async function fetchNewReleases(region = 'ID') {
   try {
     const regCode = (region || 'ID').toLowerCase();
     const url = `https://itunes.apple.com/${regCode}/rss/topalbums/limit=15/json`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: safeTimeoutSignal(6000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const entries = data.feed?.entry || [];

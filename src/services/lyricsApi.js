@@ -5,6 +5,8 @@
  * ZERO fake/AI lyrics allowed.
  */
 
+import { safeTimeoutSignal } from './musicApi';
+
 export function cleanTrackTitle(title = '') {
   return title
     .replace(/\s*\(remaster(?:ed)?(?:\s*\d{4})?\)/gi, '')
@@ -81,7 +83,7 @@ export async function fetchSyncedLyrics(artistName, trackName, audioDuration = 0
       cleanTitle
     )}&artist_name=${encodeURIComponent(cleanArtist)}`;
 
-    const res = await fetch(searchUrl, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(searchUrl, { signal: safeTimeoutSignal(5000) });
     if (!res.ok) throw new Error(`LRCLIB responded with ${res.status}`);
 
     const results = await res.json();
@@ -128,7 +130,7 @@ export async function fetchSyncedLyrics(artistName, trackName, audioDuration = 0
       `${cleanTitle} ${cleanArtist}`
     )}`;
 
-    const res = await fetch(generalUrl, { signal: AbortSignal.timeout(4500) });
+    const res = await fetch(generalUrl, { signal: safeTimeoutSignal(4500) });
     if (res.ok) {
       const results = await res.json();
       if (Array.isArray(results) && results.length > 0) {
