@@ -22,6 +22,7 @@ import { QueueSheet } from './components/QueueSheet';
 import { PracticeStudioModal } from './components/PracticeStudioModal';
 import { AudioEQModal } from './components/AudioEQModal';
 import { LyricsShareModal } from './components/LyricsShareModal';
+import { StatsModal } from './components/StatsModal';
 import { AuthModal } from './components/AuthModal';
 import { Toast } from './components/Toast';
 import { useAuth } from './context/AuthContext';
@@ -59,6 +60,7 @@ export function App() {
   const [isAudioEQOpen, setIsAudioEQOpen] = useState(false);
   const [isLyricsShareOpen, setIsLyricsShareOpen] = useState(false);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
+  const [isRecapModalOpen, setIsRecapModalOpen] = useState(false);
 
   // Single-Instance Toast State (Strictly one toast, never loops or auto-refires)
   const [toast, setToast] = useState(null);
@@ -306,6 +308,7 @@ export function App() {
               onProfileClick={() => setIsProfileDrawerOpen(true)}
               onShowToast={showToast}
               onOpenArtist={handleOpenArtist}
+              onOpenRecap={() => setIsRecapModalOpen(true)}
             />
           )}
         </div>
@@ -445,6 +448,7 @@ export function App() {
           crossfadeDuration={audio.crossfadeDuration}
           onSetCrossfadeDuration={audio.setCrossfadeDuration}
           onOpenEQ={() => setIsAudioEQOpen(true)}
+          onOpenRecap={() => setIsRecapModalOpen(true)}
           onResetLibrary={() => {
             window.location.reload();
           }}
@@ -502,6 +506,17 @@ export function App() {
 
         {/* Authentication Modal */}
         <AuthModal onShowToast={showToast} />
+
+        {/* Octav Monthly Recap & Yearly Wrapped Modal */}
+        <StatsModal
+          isOpen={isRecapModalOpen}
+          onClose={() => setIsRecapModalOpen(false)}
+          onShowToast={showToast}
+          onSelectTrack={(track) => {
+            audio.playTrack(track);
+            setIsRecapModalOpen(false);
+          }}
+        />
 
         {/* Single-Instance Liquid Glass Floating Toast (Strictly once, no infinite loops) */}
         <Toast toast={toast} onDismiss={dismissToast} />

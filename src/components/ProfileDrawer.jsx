@@ -43,6 +43,7 @@ export function ProfileDrawer({
   crossfadeDuration = 0,
   onSetCrossfadeDuration,
   onOpenEQ,
+  onOpenRecap,
 }) {
   const { user, isAuthenticated, signOut, openAuthModal, updateProfile, effectiveAvatar } = useAuth();
 
@@ -353,11 +354,18 @@ export function ProfileDrawer({
                 </div>
               )}
 
-              {/* Octav Rewind (Listening Stats) Card */}
+              {/* Octav Monthly Recap & Yearly Wrapped Card */}
               <button
                 type="button"
                 id="btn-octav-rewind"
-                onClick={() => setIsStatsModalOpen(true)}
+                onClick={() => {
+                  if (onOpenRecap) {
+                    onClose?.();
+                    onOpenRecap();
+                  } else {
+                    setIsStatsModalOpen(true);
+                  }
+                }}
                 className="w-full text-left p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-white/[0.04] to-transparent border border-emerald-500/30 flex items-center justify-between cursor-pointer hover:border-[#1ed760]/60 active:scale-[0.99] transition-all group shadow-md"
               >
                 <div className="flex items-center gap-3">
@@ -367,13 +375,13 @@ export function ProfileDrawer({
                   <div>
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-black text-white group-hover:text-[#1ed760] transition-colors">
-                        Octav Rewind
+                        Octav Recap & Wrapped
                       </span>
                       <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md bg-[#1ed760]/20 text-[#1ed760]">
-                        Stats
+                        Event
                       </span>
                     </div>
-                    <span className="text-[10px] text-white/50">Your top songs & listening time</span>
+                    <span className="text-[10px] text-white/50">Rangkuman bulanan & tahunan musikmu</span>
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-white/40 group-hover:text-white transition-colors" />

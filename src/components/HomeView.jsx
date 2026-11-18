@@ -29,6 +29,7 @@ export function HomeView({
   onProfileClick,
   onShowToast,
   onOpenArtist,
+  onOpenRecap,
 }) {
   const { user, effectiveDisplayName } = useAuth();
   const [activeFilter, setActiveFilter] = useState('All');
@@ -209,6 +210,45 @@ export function HomeView({
           <span>{greeting}</span>
         </h1>
       </div>
+
+      {/* Octav Monthly Recap & Wrapped Event Hero Card */}
+      {isAll && (
+        <div className="px-4 pt-2 pb-1">
+          <div
+            onClick={onOpenRecap}
+            className="relative overflow-hidden rounded-3xl p-4 cursor-pointer border border-[#1ed760]/30 hover:border-[#1ed760]/60 active:scale-[0.99] transition-all shadow-[0_12px_35px_rgba(0,0,0,0.5)] group"
+            style={{
+              background:
+                'linear-gradient(135deg, rgba(30, 215, 96, 0.16) 0%, rgba(139, 92, 246, 0.14) 50%, rgba(10, 10, 16, 0.8) 100%)',
+              backdropFilter: 'blur(24px) saturate(180%)',
+            }}
+          >
+            {/* Animated Ambient Bleed */}
+            <div className="absolute top-0 right-0 w-36 h-36 bg-[#1ed760]/20 rounded-full blur-2xl group-hover:scale-125 transition-transform duration-700 pointer-events-none" />
+
+            <div className="relative z-10 flex items-center justify-between">
+              <div className="flex flex-col gap-1 pr-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-[#1ed760]/25 text-[#1ed760] border border-[#1ed760]/40">
+                    EVENT BULANAN
+                  </span>
+                  <span className="text-[10px] font-bold text-white/50">• November 2026</span>
+                </div>
+                <h3 className="text-base font-black text-white tracking-tight leading-snug group-hover:text-[#1ed760] transition-colors">
+                  November Recap Kamu Sudah Siap!
+                </h3>
+                <p className="text-xs text-white/60 leading-tight">
+                  Lihat total menit mendengarkan, artis terfavorit, dan listening persona bulan ini.
+                </p>
+              </div>
+
+              <div className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-2xl bg-[#1ed760] text-black shadow-[0_4px_16px_rgba(30,215,96,0.5)] group-hover:scale-110 active:scale-95 transition-all">
+                <Sparkles className="w-5 h-5 fill-current" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Shelf 1 — "Last Session" (Shown in All or matching) */}
       {(isAll || isTrending) && (
