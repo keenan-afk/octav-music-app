@@ -12,12 +12,12 @@ export function GoogleAccountChooserModal({ isOpen, onClose, onSelectAccount }) 
     {
       name: 'Mazid',
       email: 'mazid.sound@gmail.com',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=faces',
+      avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=Mazid&backgroundColor=1ed760&textColor=000000',
     },
     {
       name: 'Mazid Studio',
       email: 'mazid.studio@gmail.com',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=faces',
+      avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=MS&backgroundColor=1ed760&textColor=000000',
     },
   ];
 

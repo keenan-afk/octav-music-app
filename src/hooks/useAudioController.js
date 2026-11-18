@@ -8,7 +8,7 @@ import {
   getTrackDedupeKey,
   getTrackKey,
 } from '../services/musicApi';
-import { syncUserDataToCloud } from '../services/supabaseClient';
+import { syncUserDataToCloud, fetchUserDataFromCloud } from '../services/supabaseClient';
 import { recordTrackPlay } from '../services/statsService';
 
 const STORAGE_KEY_LIKED = 'octav_liked_tracks';
@@ -56,17 +56,26 @@ export function useAudioController(user = null, region = 'ID') {
     return [];
   });
 
+  const isLikedHydratedRef = useRef(false);
+
   // Re-sync liked tracks and recently played when user changes (Login / Logout / Switch)
   useEffect(() => {
+    isLikedHydratedRef.current = false;
+    let isCancelled = false;
     const lKey = getLikedKey();
     const legLKey = getLegacyLikedKey();
     const rKey = getRecentKey();
     const legRKey = getLegacyRecentKey();
+
+    let localLiked = [];
     try {
       const savedLiked = localStorage.getItem(lKey) || localStorage.getItem(legLKey);
       if (savedLiked) {
         const parsed = JSON.parse(savedLiked);
-        if (Array.isArray(parsed)) setLikedTracks(parsed);
+        if (Array.isArray(parsed)) {
+          localLiked = parsed;
+          setLikedTracks(localLiked);
+        }
       } else if (!user) {
         setLikedTracks([]);
       }
@@ -77,6 +86,51 @@ export function useAudioController(user = null, region = 'ID') {
         if (Array.isArray(parsed)) setRecentlyPlayed(parsed);
       }
     } catch (e) {}
+
+    // Cloud hydration for liked tracks across devices
+    async function hydrateLikedFromCloud() {
+      if (!user?.id) {
+        isLikedHydratedRef.current = true;
+        return;
+      }
+
+      try {
+        let cloudLiked = user.cloudLibrary?.likedTracks || null;
+        if (!cloudLiked && user.isSupabase) {
+          const cloudData = await fetchUserDataFromCloud();
+          if (cloudData?.likedTracks) {
+            cloudLiked = cloudData.likedTracks;
+          }
+        }
+
+        if (isCancelled) return;
+
+        if (Array.isArray(cloudLiked) && cloudLiked.length > 0) {
+          const map = new Map();
+          localLiked.forEach((t) => map.set(t.id, t));
+          cloudLiked.forEach((t) => {
+            if (!map.has(t.id)) map.set(t.id, t);
+          });
+          const merged = Array.from(map.values());
+          setLikedTracks(merged);
+          try {
+            localStorage.setItem(lKey, JSON.stringify(merged));
+          } catch {}
+        }
+      } catch (err) {
+        console.warn('Liked tracks cloud hydration note:', err);
+      } finally {
+        if (!isCancelled) {
+          isLikedHydratedRef.current = true;
+        }
+      }
+    }
+
+    hydrateLikedFromCloud();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [user?.id]);
 
   const [currentTrack, setCurrentTrack] = useState(null);
@@ -118,7 +172,7 @@ export function useAudioController(user = null, region = 'ID') {
     try {
       const key = getLikedKey();
       localStorage.setItem(key, JSON.stringify(likedTracks));
-      if (user?.id && user?.isSupabase) {
+      if (isLikedHydratedRef.current && user?.id && user?.isSupabase) {
         syncUserDataToCloud({ likedTracks });
       }
     } catch (e) {
@@ -784,17 +838,20 @@ export function useAudioController(user = null, region = 'ID') {
     if (!('mediaSession' in navigator) || !currentTrack) return;
 
     try {
+      const artworkList = [];
+      if (currentTrack.cover) {
+        artworkList.push({
+          src: currentTrack.cover,
+          sizes: '512x512',
+          type: 'image/jpeg',
+        });
+      }
+
       navigator.mediaSession.metadata = new window.MediaMetadata({
         title: currentTrack.title || 'Unknown Track',
         artist: currentTrack.artist || 'Unknown Artist',
         album: currentTrack.album || 'Octav',
-        artwork: [
-          {
-            src: currentTrack.cover || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=512&q=80',
-            sizes: '512x512',
-            type: 'image/jpeg',
-          },
-        ],
+        artwork: artworkList,
       });
 
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';

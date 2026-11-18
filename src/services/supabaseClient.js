@@ -56,12 +56,27 @@ export async function syncUserDataToCloud({ likedTracks, customPlaylists, follow
  * Fetch cloud library data from user metadata
  */
 export function extractCloudLibrary(user) {
-  if (!user || !user.user_metadata) return null;
-  const meta = user.user_metadata;
+  if (!user) return null;
+  const meta = user.user_metadata || user.rawUser?.user_metadata || {};
   return {
     likedTracks: Array.isArray(meta.likedTracks) ? meta.likedTracks : null,
     customPlaylists: Array.isArray(meta.customPlaylists) ? meta.customPlaylists : null,
     followedArtists: Array.isArray(meta.followedArtists) ? meta.followedArtists : null,
     lastSyncedAt: meta.lastSyncedAt || null,
   };
+}
+
+/**
+ * Actively query latest user metadata from Supabase Cloud
+ */
+export async function fetchUserDataFromCloud() {
+  if (!supabase) return null;
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) return null;
+    return extractCloudLibrary(user);
+  } catch (err) {
+    console.warn('Fetch cloud user exception:', err);
+    return null;
+  }
 }

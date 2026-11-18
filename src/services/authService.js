@@ -2,7 +2,7 @@
  * Octav Hybrid Authentication & Cloud Sync Engine
  * Seamlessly pairs Supabase Cloud Auth & Metadata with Instant Local Offline Storage
  */
-import { supabase, isSupabaseConfigured, syncUserDataToCloud } from './supabaseClient';
+import { supabase, isSupabaseConfigured, syncUserDataToCloud } from './supabaseClient.js';
 
 const STORAGE_KEY_USERS = 'octav_users_db';
 const LEGACY_STORAGE_KEY_USERS = 'vetra_users_db';
@@ -48,6 +48,12 @@ export function formatSupabaseUser(supabaseUser) {
     createdAt: new Date(supabaseUser.created_at || Date.now()).getTime(),
     verified: Boolean(supabaseUser.email_confirmed_at || supabaseUser.confirmed_at),
     isSupabase: true,
+    cloudLibrary: {
+      likedTracks: Array.isArray(meta.likedTracks) ? meta.likedTracks : null,
+      customPlaylists: Array.isArray(meta.customPlaylists) ? meta.customPlaylists : null,
+      followedArtists: Array.isArray(meta.followedArtists) ? meta.followedArtists : null,
+      lastSyncedAt: meta.lastSyncedAt || null,
+    },
     rawUser: supabaseUser,
   };
 }
@@ -313,12 +319,72 @@ export async function signInWithGoogle(googleAccount) {
     const cleanName = googleAccount.name.trim();
     const username = cleanEmail.split('@')[0].replace(/[^a-z0-9_]/g, '');
 
+    // Deterministic password for cross-device Supabase cloud authentication
+    const deterministicPassword = `Octav_Sync_${btoa(cleanEmail).replace(/[^a-zA-Z0-9]/g, '').slice(0, 16)}_2026!`;
+
+    // 1. Authenticate with Supabase Cloud so PC and Mobile sync the exact same account
+    if (isSupabaseConfigured && supabase) {
+      try {
+        let sbUser = null;
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: deterministicPassword,
+        });
+
+        if (!signInError && signInData?.user) {
+          sbUser = signInData.user;
+        } else {
+          // If not registered yet in Supabase, create deterministic account
+          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email: cleanEmail,
+            password: deterministicPassword,
+            options: {
+              data: {
+                username,
+                display_name: cleanName || username,
+                avatar:
+                  googleAccount.avatar ||
+                  `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(getInitials(cleanName))}&backgroundColor=1ed760&textColor=000000&chars=2`,
+              },
+            },
+          });
+
+          if (!signUpError && signUpData?.user) {
+            sbUser = signUpData.user;
+          }
+        }
+
+        if (sbUser) {
+          const formatted = formatSupabaseUser(sbUser);
+          saveSession(formatted);
+
+          // Save to local users registry
+          const users = getUsersDB();
+          const existingIdx = users.findIndex((u) => u.email === cleanEmail);
+          if (existingIdx !== -1) {
+            users[existingIdx] = { ...users[existingIdx], ...formatted };
+          } else {
+            users.push(formatted);
+          }
+          saveUsersDB(users);
+
+          migrateGuestDataToUser(formatted.id);
+          return formatted;
+        }
+      } catch (sbErr) {
+        console.warn('Supabase Google cloud auth warning:', sbErr);
+      }
+    }
+
+    // 2. Offline / Local Fallback: Deterministic user ID based on email
+    // Guarantees PC and Phone have the identical user ID for the same Gmail account
+    const deterministicId = `usr_g_${btoa(cleanEmail).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`;
     const users = getUsersDB();
-    let user = users.find((u) => u.email === cleanEmail);
+    let user = users.find((u) => u.email === cleanEmail || u.id === deterministicId);
 
     if (!user) {
       user = {
-        id: `usr_g_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        id: deterministicId,
         username,
         displayName: cleanName || username,
         email: cleanEmail,
@@ -332,6 +398,7 @@ export async function signInWithGoogle(googleAccount) {
       users.push(user);
       saveUsersDB(users);
     } else {
+      user.id = deterministicId;
       if (cleanName) user.displayName = cleanName;
       if (googleAccount.avatar) user.avatar = googleAccount.avatar;
       saveUsersDB(users);

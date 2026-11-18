@@ -133,7 +133,7 @@ export function AvatarUploadModal({ isOpen, onClose, currentAvatar, onSaveAvatar
               className="relative z-10 w-full h-full object-cover rounded-full border-2 border-[#050507]"
               onError={(e) => {
                 e.target.src =
-                  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=180&q=80';
+                  'https://api.dicebear.com/7.x/initials/svg?seed=User&backgroundColor=1ed760&textColor=000000';
               }}
             />
             {isProcessing && (
@@ -204,7 +204,7 @@ export function AvatarUploadModal({ isOpen, onClose, currentAvatar, onSaveAvatar
               type="url"
               value={imageUrl}
               onChange={handleUrlChange}
-              placeholder="https://images.unsplash.com/..."
+              placeholder="https://..."
               className="w-full px-3 py-2 rounded-xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-white/30 outline-none focus:border-[#1ed760] transition-colors"
             />
           </div>

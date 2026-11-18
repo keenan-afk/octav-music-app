@@ -77,7 +77,7 @@ export function HomeView({
       isLikedCollection: true,
       type: 'Playlist',
       tracks: likedTracks,
-      cover: likedTracks[0]?.cover || 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?auto=format&fit=crop&w=300&q=80',
+      cover: likedTracks[0]?.cover || '',
     };
 
     return [

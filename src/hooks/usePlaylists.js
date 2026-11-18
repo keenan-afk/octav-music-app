@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { syncUserDataToCloud } from '../services/supabaseClient';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { syncUserDataToCloud, fetchUserDataFromCloud } from '../services/supabaseClient';
 
 const STORAGE_KEY_PLAYLISTS = 'octav_guest_custom_playlists';
 const LEGACY_STORAGE_KEY_PLAYLISTS = 'spotify_liquid_custom_playlists';
@@ -7,6 +7,8 @@ const LEGACY_STORAGE_KEY_PLAYLISTS = 'spotify_liquid_custom_playlists';
 export function usePlaylists(user = null) {
   const getStorageKey = () => (user?.id ? `octav_user_${user.id}_custom_playlists` : STORAGE_KEY_PLAYLISTS);
   const getLegacyStorageKey = () => (user?.id ? `vetra_user_${user.id}_custom_playlists` : LEGACY_STORAGE_KEY_PLAYLISTS);
+
+  const isHydratedRef = useRef(false);
 
   const [customPlaylists, setCustomPlaylists] = useState(() => {
     try {
@@ -27,25 +29,82 @@ export function usePlaylists(user = null) {
     return [];
   });
 
-  // Re-load playlists when active user changes
+  // Re-load playlists when active user changes & Hydrate from Supabase Cloud
   useEffect(() => {
+    isHydratedRef.current = false;
+    let isCancelled = false;
     const key = getStorageKey();
     const legacyKey = getLegacyStorageKey();
+
+    let localPlaylists = [];
     try {
       const saved = localStorage.getItem(key) || (legacyKey ? localStorage.getItem(legacyKey) : null);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          const cleaned = parsed.filter((p) => p.id !== 'custom-favorites');
-          setCustomPlaylists(cleaned);
-          return;
+          localPlaylists = parsed.filter((p) => p.id !== 'custom-favorites');
+          setCustomPlaylists(localPlaylists);
         }
+      } else if (!user) {
+        setCustomPlaylists([]);
       }
     } catch (e) {}
 
-    if (!user) {
-      setCustomPlaylists([]);
+    // Cross-Device Sync Hydration: Fetch Cloud Library on new login/device
+    async function hydrateFromCloud() {
+      if (!user?.id) {
+        isHydratedRef.current = true;
+        return;
+      }
+
+      try {
+        let cloudPlaylists = user.cloudLibrary?.customPlaylists || null;
+        if (!cloudPlaylists && user.isSupabase) {
+          const cloudData = await fetchUserDataFromCloud();
+          if (cloudData?.customPlaylists) {
+            cloudPlaylists = cloudData.customPlaylists;
+          }
+        }
+
+        if (isCancelled) return;
+
+        if (Array.isArray(cloudPlaylists) && cloudPlaylists.length > 0) {
+          const playlistMap = new Map();
+          // Seed with local playlists
+          localPlaylists.forEach((p) => playlistMap.set(p.id, p));
+
+          // Merge cloud playlists (cloud playlists take precedence if they have more tracks)
+          cloudPlaylists.forEach((cp) => {
+            if (!playlistMap.has(cp.id)) {
+              playlistMap.set(cp.id, cp);
+            } else {
+              const existing = playlistMap.get(cp.id);
+              if ((cp.tracks?.length || 0) >= (existing.tracks?.length || 0)) {
+                playlistMap.set(cp.id, { ...existing, ...cp });
+              }
+            }
+          });
+
+          const merged = Array.from(playlistMap.values());
+          setCustomPlaylists(merged);
+          try {
+            localStorage.setItem(key, JSON.stringify(merged));
+          } catch {}
+        }
+      } catch (err) {
+        console.warn('Playlists cloud hydration note:', err);
+      } finally {
+        if (!isCancelled) {
+          isHydratedRef.current = true;
+        }
+      }
     }
+
+    hydrateFromCloud();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [user?.id]);
 
   // Sync to scoped localStorage and Supabase Cloud
@@ -53,7 +112,10 @@ export function usePlaylists(user = null) {
     try {
       const key = getStorageKey();
       localStorage.setItem(key, JSON.stringify(customPlaylists));
-      if (user?.id && user?.isSupabase) {
+
+      // Guard: Only sync to Cloud after initial hydration has finished
+      // This prevents a newly mounted empty state from overwriting cloud playlists
+      if (isHydratedRef.current && user?.id && user?.isSupabase) {
         syncUserDataToCloud({ customPlaylists });
       }
     } catch (e) {

@@ -129,7 +129,10 @@ export function normalizeQuery(rawQuery = '') {
   const words = trimmed.split(/\s+/);
   if (words.length > 1 && QUERY_ALIASES[words[0].toLowerCase()]) {
     const expandedPrefix = QUERY_ALIASES[words[0].toLowerCase()];
-    return `${expandedPrefix} ${words.slice(1).join(' ')}`;
+    // Prevent duplicating if query is already part of or matches the expanded name (e.g. "sheila on 7" -> not "sheila on 7 on 7")
+    if (!trimmed.toLowerCase().startsWith(expandedPrefix.toLowerCase())) {
+      return `${expandedPrefix} ${words.slice(1).join(' ')}`;
+    }
   }
 
   return trimmed;
@@ -152,6 +155,55 @@ export function isArtistFuzzyMatch(returnedArtist = '', targetArtist = '') {
   if (tWords.length === 0) return true;
   const matched = tWords.filter((tw) => r.includes(tw));
   return matched.length / tWords.length >= 0.7;
+}
+
+// In-memory cache for verified official artist portraits
+const artistPortraitCache = new Map();
+
+/**
+ * Fetch verified official artist portrait from artist catalog
+ * Guarantees zero wrong photos, zero unsplash placeholders
+ */
+export async function fetchArtistPortrait(artistName) {
+  if (!artistName) return '';
+  const trimmed = artistName.trim();
+  const clean = trimmed.replace(/^[\W_]+/, '').trim();
+  if (!clean) return '';
+
+  const cacheKey = clean.toLowerCase();
+  if (artistPortraitCache.has(cacheKey)) {
+    return artistPortraitCache.get(cacheKey);
+  }
+
+  try {
+    const url = `https://api.deezer.com/search/artist?limit=5&q=${encodeURIComponent(clean)}`;
+    const res = await fetch(url, { signal: safeTimeoutSignal(3500) });
+    if (res.ok) {
+      const data = await res.json();
+      const artists = data.data || [];
+      const target = clean.toLowerCase();
+
+      // Strict artist name verification
+      const matched =
+        artists.find((a) => (a.name || '').toLowerCase().trim() === target) ||
+        artists.find((a) => {
+          const an = (a.name || '').toLowerCase().replace(/[^\w\s]/g, '').trim();
+          return an === target.replace(/[^\w\s]/g, '').trim();
+        });
+
+      if (matched) {
+        const portrait = matched.picture_xl || matched.picture_large || matched.picture_medium || '';
+        if (portrait) {
+          artistPortraitCache.set(cacheKey, portrait);
+          return portrait;
+        }
+      }
+    }
+  } catch (e) {
+    // Timeout or network fallback
+  }
+
+  return '';
 }
 
 /**
@@ -669,34 +721,55 @@ export async function searchMusic(rawQuery, region = 'ID') {
 
   // Extract Top Artist match
   let topArtist = null;
+  const hasExactSongMatch =
+    parsedTracks.length > 0 &&
+    ((parsedTracks[0].title || '').toLowerCase().trim() === lowQuery ||
+      (parsedTracks[0].title || '').toLowerCase().replace(/[^\w\s]/g, '').trim() ===
+        lowQuery.replace(/[^\w\s]/g, ''));
+
   if (rawArtists.length > 0) {
+    // Only match an artist if:
+    // 1) The artist name exactly matches the query (or query alias)
+    // 2) AND the query isn't explicitly an exact song title match for a different song
+    const exactArtist = rawArtists.find((a) => {
+      const name = (a.artistName || '').toLowerCase().trim();
+      const cleanN = name.replace(/[^\w\s]/g, '').trim();
+      return name === lowQuery || cleanN === lowQuery;
+    });
+
+    const isExplicitArtistQuery = isQueryArtist && !hasExactSongMatch;
     const matchedArtist =
-      rawArtists.find((a) => {
-        const name = (a.artistName || '').toLowerCase().trim();
-        const cleanN = name.replace(/[^\w\s]/g, '').trim();
-        return name === lowQuery || cleanN === lowQuery;
-      }) ||
-      rawArtists.find((a) => {
-        const name = (a.artistName || '').toLowerCase();
-        return name.includes(lowQuery) || lowQuery.includes(name);
-      }) ||
-      rawArtists[0];
+      exactArtist ||
+      (isExplicitArtistQuery
+        ? rawArtists.find((a) => {
+            const name = (a.artistName || '').toLowerCase().trim();
+            return name.startsWith(lowQuery);
+          })
+        : null);
 
-    // Find highest resolution artwork STRICTLY from THIS SPECIFIC artist's tracks
-    const artistTracks = parsedTracks.filter(
-      (t) => t.artistId === matchedArtist.artistId || isArtistFuzzyMatch(t.artist, matchedArtist.artistName)
-    );
-    // CRITICAL BUG FIX: NEVER fall back to parsedTracks[0]?.cover if it's from another artist!
-    const artistCover = artistTracks[0]?.cover || '';
+    if (matchedArtist) {
+      // Find highest resolution artwork STRICTLY from THIS SPECIFIC artist's tracks
+      const artistTracks = parsedTracks.filter(
+        (t) => t.artistId === matchedArtist.artistId || isArtistFuzzyMatch(t.artist, matchedArtist.artistName)
+      );
 
-    if (artistCover || isQueryArtist) {
-      topArtist = {
-        id: matchedArtist.artistId,
-        name: matchedArtist.artistName,
-        genre: matchedArtist.primaryGenreName || 'Popular Music',
-        cover: artistCover,
-        trackCount: artistTracks.length || 25,
-      };
+      // 1) Try verified official artist portrait from artist catalog first
+      let artistCover = await fetchArtistPortrait(matchedArtist.artistName);
+
+      // 2) Fallback to a track strictly by this artist
+      if (!artistCover) {
+        artistCover = artistTracks[0]?.cover || '';
+      }
+
+      if (artistCover || exactArtist) {
+        topArtist = {
+          id: matchedArtist.artistId,
+          name: matchedArtist.artistName,
+          genre: matchedArtist.primaryGenreName || 'Popular Music',
+          cover: artistCover,
+          trackCount: artistTracks.length || 25,
+        };
+      }
     }
   }
 
@@ -830,10 +903,11 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
     const listenerNum = 1200000 + Math.abs(hash % 7500000);
     const monthlyListeners = `${listenerNum.toLocaleString()} monthly listeners`;
 
-    // Strictly resolve artist cover from a verified track or album of THIS artist
+    // Strictly resolve verified artist portrait from official catalog
+    const verifiedPortrait = await fetchArtistPortrait(finalArtistName);
     const matchingTrack = tracks.find((t) => isArtistFuzzyMatch(t.artist, finalArtistName));
     const matchingAlbum = albums.find((a) => isArtistFuzzyMatch(a.artist, finalArtistName));
-    const artistCover = matchingTrack?.cover || matchingAlbum?.cover || initialCover || '';
+    const artistCover = verifiedPortrait || matchingTrack?.cover || matchingAlbum?.cover || initialCover || '';
 
     return {
       artist: {
@@ -854,7 +928,7 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
         id: artistId || artistName,
         name: artistName || 'Artist',
         genre: 'Pop / Rock',
-        cover: initialCover || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&q=80',
+        cover: initialCover || '',
         totalTracks: 0,
         monthlyListeners: '2,480,192 monthly listeners',
       },
@@ -965,9 +1039,7 @@ export async function fetchTopCharts(region = 'ID', limit = 50) {
       const title = e['im:name']?.label || 'Untitled';
       const artist = e['im:artist']?.label || 'Unknown Artist';
       const rawImg = e['im:image']?.[2]?.label || e['im:image']?.[1]?.label || '';
-      const cover = rawImg
-        ? rawImg.replace(/170x170/g, '400x400')
-        : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80';
+      const cover = rawImg ? rawImg.replace(/170x170/g, '400x400') : '';
       const previewUrl = e.link?.[1]?.attributes?.href || '';
       const duration = parseInt(e['im:duration']?.label || '210', 10);
       const genre = e.category?.attributes?.label || 'Pop';
@@ -1013,9 +1085,7 @@ export async function fetchNewReleases(region = 'ID') {
       const title = e['im:name']?.label || 'New Album';
       const artist = e['im:artist']?.label || 'Featured Artist';
       const rawImg = e['im:image']?.[2]?.label || e['im:image']?.[1]?.label || '';
-      const cover = rawImg
-        ? rawImg.replace(/170x170/g, '400x400')
-        : 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=400&q=80';
+      const cover = rawImg ? rawImg.replace(/170x170/g, '400x400') : '';
       const genre = e.category?.attributes?.label || 'New Release';
 
       return {

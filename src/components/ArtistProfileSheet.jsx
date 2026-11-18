@@ -176,6 +176,7 @@ export function ArtistProfileSheet({
               src={bannerCover}
               title={artistName}
               artist={artistName}
+              isArtist={true}
               className="w-full h-full object-cover filter brightness-[0.65] saturate-[1.2]"
             />
             {/* Ambient Multi-Stop Gradient Overlays */}

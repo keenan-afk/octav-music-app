@@ -217,6 +217,7 @@ export function SearchView({
                       src={topArtist.cover}
                       title={topArtist.name}
                       artist={topArtist.name}
+                      isArtist={true}
                       className="w-full h-full object-cover"
                       rounded="rounded-full"
                     />
@@ -529,13 +530,11 @@ export function SearchView({
                     {genre.title}
                   </span>
 
-                  {/* Angled decorative cover artwork */}
-                  <div className="absolute -bottom-2 -right-3 w-16 h-16 rounded-xl overflow-hidden transform rotate-[25deg] shadow-xl border border-white/20">
-                    <img
-                      src="https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=200&q=80"
-                      alt={genre.title}
-                      className="w-full h-full object-cover"
-                    />
+                  {/* Angled decorative vinyl groove badge */}
+                  <div className="absolute -bottom-2 -right-3 w-16 h-16 rounded-full overflow-hidden transform rotate-[25deg] shadow-xl border border-white/20 bg-black/40 flex items-center justify-center pointer-events-none">
+                    <div className="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center">
+                      <div className="w-4 h-4 rounded-full bg-white/20" />
+                    </div>
                   </div>
                 </div>
               ))}

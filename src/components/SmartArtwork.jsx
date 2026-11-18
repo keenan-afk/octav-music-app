@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Disc, Music } from 'lucide-react';
-import { safeTimeoutSignal } from '../services/musicApi';
+import { Disc, Music, User } from 'lucide-react';
+import { safeTimeoutSignal, isArtistFuzzyMatch, fetchArtistPortrait } from '../services/musicApi';
 
 // In-memory cache for auto-recovered artwork URLs
 const artworkCache = new Map();
 
 /**
  * SmartArtwork Component
- * Bulletproof album artwork resolver:
+ * Bulletproof album artwork & artist portrait resolver:
  * - Normalizes URLs (forcing https://)
- * - Auto-recovers broken images via Apple iTunes Search API (600x600 resolution)
+ * - Strict verification: NEVER swaps artist photo with another person, NEVER swaps song cover with another track
+ * - High-resolution Apple Music / Deezer portrait recovery
  * - Sleek dark liquid glass vinyl disc fallback with concentric specular rings (zero broken image icons)
  * - Supports 2x2 mosaic preview for custom playlists
  */
@@ -18,13 +19,15 @@ export function SmartArtwork({
   title = '',
   artist = '',
   className = '',
-  alt = 'Album Artwork',
+  alt = 'Artwork',
   mosaicCovers = null,
   rounded = 'rounded-lg',
+  isArtist = false,
   style = {},
   ...props
 }) {
-  const cacheKey = `${title}_${artist}`.trim().toLowerCase();
+  const isArtistQuery = isArtist || (title && artist && title.toLowerCase().trim() === artist.toLowerCase().trim()) || (!title && artist);
+  const cacheKey = `${isArtistQuery ? 'artist' : 'song'}_${title}_${artist}`.trim().toLowerCase();
   const initialSrc = src ? src.replace(/^http:\/\//i, 'https://') : (artworkCache.get(cacheKey) || '');
 
   const [currentSrc, setCurrentSrc] = useState(initialSrc);
@@ -61,7 +64,25 @@ export function SmartArtwork({
     setIsRecovering(true);
 
     try {
-      const term = `${title} ${artist}`.trim();
+      // 1. If this is an ARTIST portrait: Query official artist catalog (Deezer)
+      if (isArtistQuery) {
+        const targetArtist = artist || title;
+        const portrait = await fetchArtistPortrait(targetArtist);
+        if (portrait) {
+          artworkCache.set(cacheKey, portrait);
+          setCurrentSrc(portrait);
+          setHasError(false);
+          setIsRecovering(false);
+          return;
+        }
+      }
+
+      // 2. If this is a SONG: Query Apple Music iTunes with strict artist AND title matching
+      const targetTitle = (title || '').trim();
+      const targetArtist = (artist || '').trim();
+      const cleanTitle = targetTitle.toLowerCase().replace(/[^\w\s]/g, '').trim();
+
+      const term = `${targetTitle} ${targetArtist}`.trim();
       const url = `https://itunes.apple.com/search?media=music&entity=song&limit=5&term=${encodeURIComponent(
         term
       )}`;
@@ -71,12 +92,24 @@ export function SmartArtwork({
         const data = await res.json();
         const results = data.results || [];
 
-        // STRICT ARTIST VERIFICATION: Never assign artwork from a completely different artist!
+        // STRICT MATCHING: Must match BOTH the artist AND the track title!
+        // Never assign an artwork of a different song or a different artist!
         const match = results.find((item) => {
-          if (!artist) return true;
-          const a = (item.artistName || '').toLowerCase().trim();
-          const qA = artist.toLowerCase().trim();
-          return a === qA || a.includes(qA) || qA.includes(a);
+          const itemArtist = (item.artistName || '').toLowerCase().trim();
+          const itemTitle = (item.trackName || '').toLowerCase().trim();
+          const cleanItemTitle = itemTitle.replace(/[^\w\s]/g, '').trim();
+
+          const artistMatches = targetArtist ? isArtistFuzzyMatch(itemArtist, targetArtist) : true;
+          if (!artistMatches) return false;
+
+          const titleMatches =
+            !cleanTitle ||
+            itemTitle === targetTitle.toLowerCase().trim() ||
+            cleanItemTitle === cleanTitle ||
+            cleanItemTitle.startsWith(cleanTitle) ||
+            cleanTitle.startsWith(cleanItemTitle);
+
+          return titleMatches;
         });
 
         if (match?.artworkUrl100) {
