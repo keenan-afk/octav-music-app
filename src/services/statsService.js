@@ -220,19 +220,62 @@ export function recordTrackPlay(track, secondsListened = 30, userId = null) {
 }
 
 /**
- * Computes psychological / stylistic "Listening Persona"
- * from hourly distribution and artist replay loyalty.
+ * Determines whether the Monthly Recap event is currently active.
+ * The event is held at the end of the month (from day 25 through the last day)
+ * until the 2nd day of the following month.
+ */
+export function isMonthlyRecapActive(date = new Date()) {
+  const day = date.getDate();
+  return day >= 25 || day <= 2;
+}
+
+/**
+ * Returns the target recap period info (name, status, active state, next schedule)
+ */
+export function getRecapEventStatus(date = new Date()) {
+  const day = date.getDate();
+  const month = date.getMonth();
+  const year = date.getFullYear();
+  const isActive = day >= 25 || day <= 2;
+
+  // If day <= 2, it recaps the previous month that just ended
+  let recapMonthIdx = month;
+  let recapYear = year;
+  if (day <= 2) {
+    const prevDate = new Date(year, month - 1, 1);
+    recapMonthIdx = prevDate.getMonth();
+    recapYear = prevDate.getFullYear();
+  }
+
+  const recapMonthName = MONTH_NAMES[recapMonthIdx];
+  const nextEventDate = day < 25 ? `25 ${MONTH_NAMES[month]}` : `25 ${MONTH_NAMES[(month + 1) % 12]}`;
+
+  return {
+    isActive,
+    recapMonthName,
+    recapYear,
+    label: `${recapMonthName} ${recapYear}`,
+    nextEventDate,
+    day,
+  };
+}
+
+/**
+ * Computes stylistic "Sound Architecture & Listening Persona"
+ * derived from hourly distribution, artist replay loyalty, and catalog diversity.
  */
 export function computeListeningPersona(stats) {
   const totalPlays = stats.playsCount || 0;
   if (totalPlays === 0) {
     return {
-      title: 'The Melodic Soul',
-      badge: '🎵 Soul',
-      tagline: 'Perjalanan musikmu baru dimulai',
-      description: 'Dengarkan lagu-lagu favoritmu untuk membuka audio aura dan kepribadian mendengarkanmu.',
+      title: 'The Curious Ear',
+      badge: 'ARCHETYPE 01',
+      tagline: 'Eksplorasi Katalog Baru',
+      description: 'Rotasi lagumu baru mulai terbentuk. Putar lebih banyak lagu untuk memetakan arsitektur suaramu.',
       vibeColor: '#1ed760',
+      accentColor: '#10b981',
       peakHour: '12:00',
+      archetypeCode: 'EXPL-01',
     };
   }
 
@@ -258,60 +301,71 @@ export function computeListeningPersona(stats) {
   artists.sort((a, b) => b.plays - a.plays);
   const topArtistPlays = artists[0]?.plays || 0;
 
-  // 1. Devoted Fan
+  // 1. Devoted Loyalist (Extremely high single-artist devotion)
   if (artists.length >= 1 && (topArtistPlays / totalPlays) >= 0.45) {
     return {
-      title: 'The Devoted Fan',
-      badge: '🌟 Fan Sejati',
-      tagline: 'Satu musisi, sejuta cerita',
-      description: `Kesetiaanmu pada ${artists[0].name} luar biasa. Satu lagu diputar berulang kali adalah caramu menikmati hidup.`,
-      vibeColor: '#f59e0b',
+      title: 'The Devoted Loyalist',
+      badge: 'HEAVY ROTATION',
+      tagline: 'Kesetiaan Katalog Penuh',
+      description: `Rotasimu didominasi oleh ${artists[0].name}. Bukan sekadar mendengarkan, kamu mendalami setiap detail diskografinya secara intensif.`,
+      vibeColor: '#f97316',
+      accentColor: '#fb923c',
       peakHour: `${String(peakHour).padStart(2, '0')}:00`,
+      archetypeCode: 'LOYAL-09',
     };
   }
 
-  // 2. Midnight Owl
+  // 2. Nocturnal Audiophile (Peak hours 22:00 - 04:00)
   if (nightPlays > 0 && (nightPlays / totalPlays) >= 0.35) {
     return {
-      title: 'The Midnight Owl',
-      badge: '🦉 Burung Hantu',
-      tagline: 'Soundtrack malam penuh renungan',
-      description: 'Musik adalah teman setiamu saat dunia terlelap. Kamu paling aktif mendengarkan di jam larut malam.',
-      vibeColor: '#8b5cf6',
+      title: 'The Nocturnal Audiophile',
+      badge: 'MIDNIGHT FREQUENCY',
+      tagline: 'Resonansi Tengah Malam',
+      description: 'Fokus musikmu mencapai puncak saat dunia luar sunyi. Jam larut adalah ruang dengar paling sakral bagimu.',
+      vibeColor: '#3b82f6',
+      accentColor: '#60a5fa',
       peakHour: `${String(peakHour).padStart(2, '0')}:00`,
+      archetypeCode: 'NOCT-03',
     };
   }
 
-  // 3. Dawn Chaser
+  // 3. Morning Architect (Peak hours 05:00 - 11:00)
   if (morningPlays > 0 && (morningPlays / totalPlays) >= 0.35) {
     return {
-      title: 'The Dawn Chaser',
-      badge: '☀️ Pemburu Fajar',
-      tagline: 'Energi segar penakluk hari',
-      description: 'Ritme pagimu dimulai dengan musik. Ketukan lagu memberi suntikan semangat sebelum memulai aktivitas.',
+      title: 'The Morning Architect',
+      badge: 'DAYBREAK FOCUS',
+      tagline: 'Ritme Awal Hari',
+      description: 'Musik adalah pemicu tempo dan konsentrasi pagimu. Melodi yang kamu pilih menentukan kejernihan hari yang kamu bangun.',
       vibeColor: '#06b6d4',
+      accentColor: '#22d3ee',
       peakHour: `${String(peakHour).padStart(2, '0')}:00`,
+      archetypeCode: 'DAWN-04',
     };
   }
 
-  // 4. Sonic Explorer
+  // 4. Sonic Omnivore (Broad variety of 5+ distinct artists)
   if (artists.length >= 5) {
     return {
-      title: 'The Sonic Explorer',
-      badge: '🚀 Penjelajah Nada',
-      tagline: 'Tak terbatas oleh satu warna',
-      description: 'Pikiranmu terbuka pada semua warna musik. Kamu suka bertualang menemukan nada dan melodi baru.',
-      vibeColor: '#ec4899',
+      title: 'The Sonic Omnivore',
+      badge: 'WIDE SPECTRUM',
+      tagline: 'Eksplorasi Lintas Spektrum',
+      description: 'Telingamu tidak mengenal batasan satu genre. Kamu menyerap ritme, lirik, dan aransemen dari berbagai sudut musikal.',
+      vibeColor: '#eab308',
+      accentColor: '#facc15',
       peakHour: `${String(peakHour).padStart(2, '0')}:00`,
+      archetypeCode: 'OMNI-07',
     };
   }
 
+  // 5. Melodic Purist (Curated consistent listening)
   return {
-    title: 'The Melodic Dreamer',
-    badge: '✨ Pendengar Setia',
-    tagline: 'Hanyut dalam alunan melodi',
-    description: 'Setiap ketukan membawa cerita tersendiri. Musik adalah bumbu harian yang melengkapi harimu.',
+    title: 'The Melodic Purist',
+    badge: 'PURE HARMONICS',
+    tagline: 'Kurasi Harmoni Alami',
+    description: 'Pilihan lagumu selektif dan berbobot. Kamu mencari nada yang tidak lekang oleh waktu dan menemani fokus harimu.',
     vibeColor: '#1ed760',
+    accentColor: '#34d399',
     peakHour: `${String(peakHour).padStart(2, '0')}:00`,
+    archetypeCode: 'PURE-02',
   };
 }

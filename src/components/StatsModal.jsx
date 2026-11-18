@@ -4,11 +4,9 @@ import {
   Sparkles,
   Download,
   Share2,
-  Flame,
-  Trophy,
   Play,
   Pause,
-  Music,
+  Music2,
   RotateCcw,
   LayoutGrid,
   Layers,
@@ -16,9 +14,12 @@ import {
   Compass,
   Check,
   Calendar,
-  Award,
   ChevronLeft,
   ChevronRight,
+  Disc3,
+  BarChart3,
+  Flame,
+  Radio,
 } from 'lucide-react';
 import { SmartArtwork } from './SmartArtwork';
 import {
@@ -33,7 +34,7 @@ const TOTAL_SLIDES = 5;
 
 /**
  * Octav Monthly Recap & Yearly Wrapped Modal
- * Full-screen interactive 9:16 story experience + summary grid.
+ * Anti-Slop High-Contrast Editorial Story Experience + Grid Archive.
  */
 export function StatsModal({
   isOpen,
@@ -65,7 +66,7 @@ export function StatsModal({
   const totalMinutes = Math.round((stats.totalSeconds || 0) / 60);
   const totalPlays = stats.playsCount || 0;
 
-  // Persona
+  // Persona & Sound Architecture
   const persona = useMemo(() => {
     return computeListeningPersona(stats);
   }, [stats]);
@@ -85,15 +86,10 @@ export function StatsModal({
   }, [stats]);
 
   const displayName = user?.displayName || effectiveDisplayName || 'Listener';
-  const avatarUrl =
-    user?.avatar ||
-    effectiveAvatar ||
-    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=180&q=80';
 
   // Story progression timer
   useEffect(() => {
     if (!isOpen || viewMode !== 'story') return;
-
     if (isPaused || isHolding || isPeriodMenuOpen) return;
 
     const intervalTime = 50;
@@ -106,7 +102,6 @@ export function StatsModal({
             setCurrentSlide((s) => s + 1);
             return 0;
           } else {
-            // Stay at final slide
             return 100;
           }
         }
@@ -140,7 +135,6 @@ export function StatsModal({
   };
 
   const handleScreenTouch = (e) => {
-    // Ignore clicks on buttons/interactive elements
     if (e.target.closest('button') || e.target.closest('.no-story-nav')) return;
 
     const rect = e.currentTarget.getBoundingClientRect();
@@ -154,7 +148,7 @@ export function StatsModal({
     }
   };
 
-  // High-Resolution 1080x1920 9:16 Canvas Story Export
+  // High-Resolution 1080x1920 9:16 Editorial Canvas Story Export
   const handleExportCard = async () => {
     setIsExporting(true);
     try {
@@ -165,179 +159,211 @@ export function StatsModal({
       canvas.height = H;
       const ctx = canvas.getContext('2d');
 
-      // 1. Dark Studio Gradient Background
-      const bgGrad = ctx.createLinearGradient(0, 0, W, H);
-      bgGrad.addColorStop(0, '#090a10');
-      bgGrad.addColorStop(0.45, '#050508');
-      bgGrad.addColorStop(1, '#020204');
+      // 1. Dark Basalt Noise Background
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+      bgGrad.addColorStop(0, '#0a0b10');
+      bgGrad.addColorStop(0.5, '#07080b');
+      bgGrad.addColorStop(1, '#030406');
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, W, H);
 
-      // 2. Dual Aura Bleed
-      const g1 = ctx.createRadialGradient(250, 380, 20, 250, 380, 550);
-      g1.addColorStop(0, 'rgba(30, 215, 96, 0.32)');
-      g1.addColorStop(1, 'transparent');
-      ctx.fillStyle = g1;
+      // Subtle editorial accent bleed
+      const aura = ctx.createRadialGradient(W / 2, 450, 40, W / 2, 450, 650);
+      aura.addColorStop(0, 'rgba(30, 215, 96, 0.22)');
+      aura.addColorStop(0.7, 'rgba(16, 185, 129, 0.05)');
+      aura.addColorStop(1, 'transparent');
+      ctx.fillStyle = aura;
       ctx.fillRect(0, 0, W, H);
 
-      const g2 = ctx.createRadialGradient(840, 1350, 20, 840, 1350, 600);
-      g2.addColorStop(0, 'rgba(139, 92, 246, 0.28)');
-      g2.addColorStop(1, 'transparent');
-      ctx.fillStyle = g2;
-      ctx.fillRect(0, 0, W, H);
-
-      // 3. Central Glass Frame
-      const cardX = 70;
-      const cardY = 120;
-      const cardW = W - 140;
-      const cardH = H - 240;
+      // 2. Central Editorial Card Frame
+      const cardX = 64;
+      const cardY = 100;
+      const cardW = W - 128;
+      const cardH = H - 200;
 
       ctx.save();
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, 52);
-      ctx.fillStyle = 'rgba(20, 20, 28, 0.88)';
+      ctx.roundRect(cardX, cardY, cardW, cardH, 44);
+      ctx.fillStyle = 'rgba(15, 17, 24, 0.92)';
       ctx.fill();
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
       ctx.stroke();
       ctx.clip();
 
-      // Top Glass Specular Line
+      // Top Specular Accent
       const rim = ctx.createLinearGradient(cardX, cardY, cardX + cardW, cardY);
-      rim.addColorStop(0, 'rgba(255, 255, 255, 0)');
-      rim.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)');
-      rim.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      rim.addColorStop(0, 'rgba(30, 215, 96, 0)');
+      rim.addColorStop(0.5, '#1ed760');
+      rim.addColorStop(1, 'rgba(30, 215, 96, 0)');
       ctx.fillStyle = rim;
       ctx.fillRect(cardX, cardY, cardW, 4);
 
-      // Header Tag: Event Type & Period
+      // Header: Event Tag & Issue Number
       ctx.fillStyle = '#1ed760';
-      ctx.font = '800 26px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
-      ctx.fillText(activePeriodObj.tag.toUpperCase(), cardX + 60, cardY + 85);
-
-      // Main Period Title
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '900 58px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
-      ctx.fillText(activePeriodObj.label, cardX + 60, cardY + 155);
-
-      // User pill
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-      ctx.font = '600 30px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
-      ctx.fillText(`Curated for ${displayName}`, cardX + 60, cardY + 205);
-
-      // 4. Two Metrics Blocks (Minutes & Persona)
-      const metricY = cardY + 250;
-
-      // Minutes Pill
-      ctx.fillStyle = 'rgba(30, 215, 96, 0.12)';
-      ctx.beginPath();
-      ctx.roundRect(cardX + 60, metricY, 380, 110, 24);
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgba(30, 215, 96, 0.35)';
-      ctx.stroke();
-
-      ctx.fillStyle = '#1ed760';
-      ctx.font = '800 22px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
-      ctx.fillText('TOTAL WAKTU', cardX + 90, metricY + 42);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '900 44px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
-      ctx.fillText(`${totalMinutes.toLocaleString()} Menit`, cardX + 90, metricY + 92);
-
-      // Persona Pill
-      ctx.fillStyle = 'rgba(139, 92, 246, 0.14)';
-      ctx.beginPath();
-      ctx.roundRect(cardX + 465, metricY, cardW - 525, 110, 24);
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgba(139, 92, 246, 0.4)';
-      ctx.stroke();
-
-      ctx.fillStyle = '#a78bfa';
-      ctx.font = '800 22px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
-      ctx.fillText('AUDIO PERSONA', cardX + 495, metricY + 42);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '900 36px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
-      ctx.fillText(persona.badge, cardX + 495, metricY + 92);
-
-      // 5. Top 1 Artist Card
-      const artistY = metricY + 145;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-      ctx.beginPath();
-      ctx.roundRect(cardX + 60, artistY, cardW - 120, 110, 24);
-      ctx.fill();
-
-      ctx.fillStyle = '#f59e0b';
-      ctx.font = '800 22px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
-      ctx.fillText('ARTIS TERATAS #1', cardX + 90, artistY + 45);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '900 40px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
-      ctx.fillText(topArtists[0]?.name || 'Belum ada artis', cardX + 90, artistY + 92);
-
-      // 6. Top 5 Songs Countdown List
-      let trackY = artistY + 185;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
       ctx.font = '800 24px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
-      ctx.fillText('TOP 5 LAGU FAVORIT', cardX + 60, trackY);
+      ctx.fillText('OCTAV // MONTHLY RECAP', cardX + 60, cardY + 80);
 
-      trackY += 45;
-      topTracks.forEach((t, i) => {
-        // Rank circle
-        ctx.fillStyle = i === 0 ? '#1ed760' : 'rgba(255, 255, 255, 0.12)';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.font = '700 22px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(`ISSUE // ${activePeriodObj.id}`, cardX + cardW - 60, cardY + 80);
+      ctx.textAlign = 'left';
+
+      // Big Period Header
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 68px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(activePeriodObj.label.toUpperCase(), cardX + 60, cardY + 160);
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.font = '600 28px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(`Curated sound archive for ${displayName}`, cardX + 60, cardY + 210);
+
+      // Section 1: Massive Minutes Block
+      const block1Y = cardY + 260;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+      ctx.beginPath();
+      ctx.roundRect(cardX + 60, block1Y, cardW - 120, 180, 28);
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.font = '800 20px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
+      ctx.fillText('TOTAL MINUTES LOGGED', cardX + 90, block1Y + 45);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 86px monospace';
+      ctx.fillText(totalMinutes.toLocaleString(), cardX + 90, block1Y + 135);
+
+      ctx.fillStyle = '#1ed760';
+      ctx.font = '800 28px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
+      ctx.fillText('MIN', cardX + 90 + ctx.measureText(totalMinutes.toLocaleString()).width + 20, block1Y + 135);
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.font = '700 24px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${totalPlays} plays recorded`, cardX + cardW - 90, block1Y + 135);
+      ctx.textAlign = 'left';
+
+      // Section 2: Two Columns (Sound Persona & Top Artist)
+      const block2Y = block1Y + 210;
+      const colW = (cardW - 145) / 2;
+
+      // Col A: Sound Persona
+      ctx.fillStyle = 'rgba(59, 130, 246, 0.08)';
+      ctx.beginPath();
+      ctx.roundRect(cardX + 60, block2Y, colW, 190, 24);
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(59, 130, 246, 0.25)';
+      ctx.stroke();
+
+      ctx.fillStyle = '#60a5fa';
+      ctx.font = '800 18px monospace';
+      ctx.fillText('SOUND ARCHETYPE', cardX + 85, block2Y + 45);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 32px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(persona.title, cardX + 85, block2Y + 95);
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.font = '600 22px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(persona.tagline, cardX + 85, block2Y + 140);
+
+      // Col B: Top Artist
+      ctx.fillStyle = 'rgba(249, 115, 22, 0.08)';
+      ctx.beginPath();
+      ctx.roundRect(cardX + 60 + colW + 25, block2Y, colW, 190, 24);
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(249, 115, 22, 0.25)';
+      ctx.stroke();
+
+      ctx.fillStyle = '#fb923c';
+      ctx.font = '800 18px monospace';
+      ctx.fillText('TOP ROTATION ARTIST', cardX + 60 + colW + 50, block2Y + 45);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 32px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
+      const aName = topArtists[0]?.name || 'Belum Ada Artis';
+      ctx.fillText(aName.length > 14 ? `${aName.slice(0, 14)}...` : aName, cardX + 60 + colW + 50, block2Y + 95);
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.font = '600 22px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(`${topArtists[0]?.plays || 0}x heavy plays`, cardX + 60 + colW + 50, block2Y + 140);
+
+      // Section 3: Top 5 Tracks Countdown
+      let listY = block2Y + 235;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.font = '800 20px monospace';
+      ctx.fillText('TOP ROTATION // TRACKLIST', cardX + 60, listY);
+
+      listY += 40;
+      topTracks.slice(0, 5).forEach((t, i) => {
+        ctx.fillStyle = i === 0 ? 'rgba(30, 215, 96, 0.12)' : 'rgba(255, 255, 255, 0.02)';
         ctx.beginPath();
-        ctx.arc(cardX + 95, trackY + 30, 26, 0, Math.PI * 2);
+        ctx.roundRect(cardX + 60, listY, cardW - 120, 85, 18);
         ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = i === 0 ? 'rgba(30, 215, 96, 0.3)' : 'rgba(255, 255, 255, 0.05)';
+        ctx.stroke();
 
-        ctx.fillStyle = i === 0 ? '#050507' : '#ffffff';
-        ctx.font = '900 26px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(`0${i + 1}`, cardX + 95, trackY + 39);
-        ctx.textAlign = 'left';
+        // Rank Number
+        ctx.fillStyle = i === 0 ? '#1ed760' : 'rgba(255, 255, 255, 0.4)';
+        ctx.font = '900 26px monospace';
+        ctx.fillText(`0${i + 1}`, cardX + 85, listY + 52);
 
         // Title
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 34px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
-        const truncatedTitle = t.title.length > 25 ? `${t.title.slice(0, 25)}...` : t.title;
-        ctx.fillText(truncatedTitle, cardX + 145, trackY + 28);
+        ctx.font = '800 28px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
+        const cleanT = t.title.length > 28 ? `${t.title.slice(0, 28)}...` : t.title;
+        ctx.fillText(cleanT, cardX + 155, listY + 42);
 
-        // Artist & Plays
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-        ctx.font = '500 26px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
-        ctx.fillText(`${t.artist}  •  ${t.plays}x diputar`, cardX + 145, trackY + 62);
+        // Artist
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.font = '500 22px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
+        ctx.fillText(t.artist, cardX + 155, listY + 68);
 
-        // Divider
-        if (i < topTracks.length - 1) {
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
-          ctx.fillRect(cardX + 60, trackY + 90, cardW - 120, 2);
-        }
+        // Plays
+        ctx.fillStyle = i === 0 ? '#1ed760' : 'rgba(255, 255, 255, 0.6)';
+        ctx.font = '800 22px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${t.plays}x`, cardX + cardW - 90, listY + 52);
+        ctx.textAlign = 'left';
 
-        trackY += 125;
+        listY += 100;
       });
 
-      // 7. Footer Watermark
-      const footerY = cardY + cardH - 85;
-      ctx.fillStyle = '#1ed760';
-      ctx.beginPath();
-      ctx.arc(cardX + 85, footerY + 5, 12, 0, Math.PI * 2);
-      ctx.fill();
+      // Section 4: Authentic Barcode & Branding Footer
+      const footerY = cardY + cardH - 100;
 
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '900 38px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
-      ctx.fillText('Octav', cardX + 115, footerY + 18);
+      // Draw stylized barcode lines
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      const barcodeX = cardX + 60;
+      const barCount = 42;
+      for (let b = 0; b < barCount; b++) {
+        const w = (b % 3 === 0) ? 5 : (b % 2 === 0) ? 3 : 2;
+        ctx.fillRect(barcodeX + (b * 8), footerY, w, 36);
+      }
+
+      ctx.fillStyle = '#1ed760';
+      ctx.font = '900 36px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('Octav', cardX + cardW - 60, footerY + 30);
 
       ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-      ctx.font = '600 24px -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", sans-serif';
-      ctx.fillText('music.octav.app', cardX + cardW - 250, footerY + 18);
+      ctx.font = '600 18px monospace';
+      ctx.fillText('OCTAV SOUND LABS', cardX + cardW - 60, footerY + 54);
+      ctx.textAlign = 'left';
 
       ctx.restore();
 
-      // Trigger Direct Download & Share
+      // Download
       const dataUrl = canvas.toDataURL('image/png');
       const downloadLink = document.createElement('a');
-      downloadLink.download = `${displayName.replace(/\s+/g, '_')}_Octav_${activePeriodObj.id}.png`;
+      downloadLink.download = `Octav_Recap_${activePeriodObj.id}_${displayName.replace(/\s+/g, '_')}.png`;
       downloadLink.href = dataUrl;
       downloadLink.click();
 
@@ -360,24 +386,23 @@ export function StatsModal({
         style={{
           background:
             currentSlide === 1
-              ? 'radial-gradient(circle at 50% 40%, rgba(139, 92, 246, 0.4) 0%, transparent 70%)'
+              ? 'radial-gradient(circle at 50% 35%, rgba(59, 130, 246, 0.3) 0%, transparent 65%)'
               : currentSlide === 2
-              ? 'radial-gradient(circle at 50% 40%, rgba(245, 158, 11, 0.35) 0%, transparent 70%)'
-              : 'radial-gradient(circle at 50% 40%, rgba(30, 215, 96, 0.35) 0%, transparent 70%)',
+              ? 'radial-gradient(circle at 50% 35%, rgba(249, 115, 22, 0.3) 0%, transparent 65%)'
+              : currentSlide === 3
+              ? 'radial-gradient(circle at 50% 35%, rgba(234, 179, 8, 0.25) 0%, transparent 65%)'
+              : 'radial-gradient(circle at 50% 35%, rgba(30, 215, 96, 0.3) 0%, transparent 65%)',
         }}
       />
 
-      {/* Main Container Card (Exact 9:16 Aspect on Mobile, Max-W 430px) */}
+      {/* Main Container Card (Exact 9:16 Aspect on Mobile, Max-W 420px) */}
       <div
         onMouseDown={() => setIsHolding(true)}
         onMouseUp={() => setIsHolding(false)}
         onTouchStart={() => setIsHolding(true)}
         onTouchEnd={() => setIsHolding(false)}
         onClick={handleScreenTouch}
-        className="relative w-full h-full md:h-[92vh] md:max-w-[420px] md:rounded-[40px] overflow-hidden flex flex-col justify-between text-white shadow-[0_30px_90px_rgba(0,0,0,0.95)] border border-white/15"
-        style={{
-          background: 'linear-gradient(175deg, #0d0f15 0%, #06070a 100%)',
-        }}
+        className="relative w-full h-full md:h-[92vh] md:max-w-[420px] md:rounded-[40px] overflow-hidden flex flex-col justify-between text-white shadow-[0_30px_90px_rgba(0,0,0,0.95)] border border-white/15 bg-[#090a0f]"
       >
         {/* ================= TOP BAR CONTROLS ================= */}
         <div className="relative z-30 pt-4 px-4 pb-2 flex flex-col gap-3">
@@ -433,7 +458,7 @@ export function StatsModal({
                   onClick={(e) => e.stopPropagation()}
                   className="absolute top-9 left-0 w-52 rounded-2xl bg-[#14151e]/98 border border-white/20 shadow-2xl p-1.5 z-50 flex flex-col gap-1 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150"
                 >
-                  <span className="text-[10px] font-black uppercase tracking-wider text-white/40 px-2 py-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-white/40 px-2 py-1 font-mono">
                     Pilih Periode
                   </span>
                   {periods.map((p) => {
@@ -505,80 +530,87 @@ export function StatsModal({
         {/* ================= STORY VIEW SLIDES ================= */}
         {viewMode === 'story' ? (
           <div className="relative flex-1 px-6 flex flex-col justify-center overflow-hidden">
-            {/* Slide 0: Total Minutes & Listening Time */}
+            {/* Slide 0: Total Minutes & Frequency */}
             {currentSlide === 0 && (
               <div className="flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-400">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-extrabold uppercase tracking-widest px-3 py-1 rounded-full bg-[#1ed760]/20 text-[#1ed760] border border-[#1ed760]/40 shadow-sm">
-                    {activePeriodObj.tag}
+                  <span className="text-[11px] font-black uppercase tracking-widest px-3 py-1 rounded-full bg-[#1ed760]/20 text-[#1ed760] border border-[#1ed760]/40 font-mono shadow-sm">
+                    01 // TOTAL WAKTU
                   </span>
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-semibold text-white/60 tracking-tight">
-                    Di {activePeriodObj.label}, kamu telah mendengarkan
+                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-white/50 font-mono">
+                    Di {activePeriodObj.label}, kamu telah memutar
                   </h3>
-                  <div className="flex items-baseline gap-2 mt-1">
-                    <span className="text-6xl font-black tracking-tight text-white drop-shadow-[0_4px_25px_rgba(30,215,96,0.4)]">
+                  <div className="flex items-baseline gap-2 mt-2">
+                    <span className="text-7xl font-black font-mono tracking-tighter text-white drop-shadow-[0_4px_30px_rgba(30,215,96,0.35)]">
                       {totalMinutes.toLocaleString()}
                     </span>
-                    <span className="text-2xl font-bold text-[#1ed760]">Menit</span>
+                    <span className="text-2xl font-black text-[#1ed760] font-mono">MIN</span>
                   </div>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-between">
                   <div className="flex flex-col">
-                    <span className="text-xs text-white/50 font-medium">Total Lagu Diputar</span>
-                    <span className="text-xl font-black text-white">{totalPlays} Lagu</span>
+                    <span className="text-[11px] text-white/50 font-semibold font-mono uppercase tracking-wider">
+                      Lagu Terekam
+                    </span>
+                    <span className="text-2xl font-black text-white mt-0.5">{totalPlays} Tracks</span>
                   </div>
-                  <div className="w-10 h-10 rounded-xl bg-[#1ed760]/20 flex items-center justify-center text-[#1ed760]">
-                    <Music className="w-5 h-5" />
+                  <div className="w-12 h-12 rounded-2xl bg-[#1ed760]/15 border border-[#1ed760]/30 flex items-center justify-center text-[#1ed760]">
+                    <Music2 className="w-6 h-6 stroke-[2]" />
                   </div>
                 </div>
 
-                <p className="text-xs text-white/50 leading-relaxed italic border-l-2 border-[#1ed760] pl-3 py-1">
-                  "Musik adalah soundtrack yang mengisi setiap langkah dan inspirasimu di{' '}
-                  {activePeriodObj.label}."
+                <p className="text-xs text-white/70 leading-relaxed border-l-2 border-[#1ed760] pl-3 py-1 font-medium">
+                  {totalMinutes > 60
+                    ? `Kamu menghabiskan lebih dari ${Math.round(totalMinutes / 60)} jam bersama Octav bulan ini. Musik yang menemani fokus, perjalanan, dan istirahatmu.`
+                    : 'Setiap detik musik mencatat cerita tersendiri. Terus putar lagu favoritmu untuk memperkaya rekaman bulananmu.'}
                 </p>
 
-                <div className="pt-2 text-center text-xs text-white/40">
+                <div className="pt-2 text-center text-xs text-white/40 font-mono">
                   <span>Ketuk sisi kanan layar untuk lanjut →</span>
                 </div>
               </div>
             )}
 
-            {/* Slide 1: Audio Persona / Vibe */}
+            {/* Slide 1: Sound Architecture (Persona) */}
             {currentSlide === 1 && (
               <div className="flex flex-col items-center text-center gap-6 animate-in fade-in zoom-in-95 duration-400">
-                <span className="text-xs font-extrabold uppercase tracking-widest px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                  Audio Persona Kamu
+                <span className="text-[11px] font-black uppercase tracking-widest px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 font-mono">
+                  02 // SOUND ARCHITECTURE
                 </span>
 
-                {/* Persona Avatar Aura */}
+                {/* Concentric Kinetic Radar Ring */}
                 <div className="relative w-36 h-36 flex items-center justify-center">
-                  <div
-                    className="absolute inset-0 rounded-full blur-2xl opacity-60 animate-pulse"
-                    style={{ background: persona.vibeColor }}
-                  />
-                  <div className="relative z-10 w-28 h-28 rounded-full bg-gradient-to-tr from-purple-900 to-indigo-950 border-2 border-purple-400/50 flex flex-col items-center justify-center shadow-2xl">
-                    <span className="text-4xl">{persona.badge.split(' ')[0]}</span>
-                    <span className="text-[10px] font-black text-purple-200 mt-1">PERSONA</span>
+                  <div className="absolute inset-0 rounded-full border border-blue-500/20 animate-ping opacity-40 duration-1000" />
+                  <div className="absolute inset-2 rounded-full border border-blue-500/30" />
+                  <div className="absolute inset-6 rounded-full border border-blue-500/50" />
+                  <div className="relative z-10 w-20 h-20 rounded-full bg-gradient-to-tr from-blue-900 to-indigo-950 border border-blue-400/60 flex flex-col items-center justify-center shadow-2xl">
+                    <Radio className="w-7 h-7 text-blue-300 stroke-[2]" />
+                    <span className="text-[8px] font-mono font-black text-blue-200 mt-1 tracking-wider">
+                      {persona.archetypeCode}
+                    </span>
                   </div>
                 </div>
 
                 <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 font-mono block mb-1">
+                    {persona.badge}
+                  </span>
                   <h2 className="text-2xl font-black text-white tracking-tight">{persona.title}</h2>
-                  <p className="text-xs font-semibold text-purple-300 mt-0.5">{persona.tagline}</p>
+                  <p className="text-xs font-semibold text-white/60 mt-1">{persona.tagline}</p>
                 </div>
 
-                <p className="text-xs text-white/70 max-w-xs leading-relaxed px-4">
+                <p className="text-xs text-white/70 max-w-xs leading-relaxed px-2 font-medium">
                   {persona.description}
                 </p>
 
                 {persona.peakHour && (
-                  <div className="px-3.5 py-1.5 rounded-xl bg-white/[0.06] border border-white/10 text-xs font-semibold text-white/80 flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-purple-400" />
-                    <span>Jam puncak mendengarkan: {persona.peakHour} WIB</span>
+                  <div className="w-full max-w-xs px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-between text-xs font-semibold">
+                    <span className="text-white/50 font-mono uppercase text-[10px]">Peak Activity</span>
+                    <span className="text-blue-300 font-mono font-bold">{persona.peakHour} WIB</span>
                   </div>
                 )}
               </div>
@@ -587,23 +619,31 @@ export function StatsModal({
             {/* Slide 2: Top Artist Spotlight */}
             {currentSlide === 2 && (
               <div className="flex flex-col items-center text-center gap-5 animate-in fade-in zoom-in-95 duration-400">
-                <span className="text-xs font-extrabold uppercase tracking-widest px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  Artis Paling Setia Menemanimu
+                <span className="text-[11px] font-black uppercase tracking-widest px-3 py-1 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/40 font-mono">
+                  03 // ANCHOR ARTIST
                 </span>
 
-                {/* Big Artist Circle */}
-                <div className="relative w-36 h-36">
-                  <div className="absolute inset-0 rounded-full bg-amber-500/30 blur-2xl" />
-                  <div className="relative z-10 w-full h-full rounded-full overflow-hidden border-3 border-amber-400/60 shadow-2xl bg-neutral-900">
-                    <SmartArtwork
-                      src={topTracks[0]?.cover}
-                      title={topArtists[0]?.name}
-                      artist={topArtists[0]?.name}
-                      className="w-full h-full object-cover"
-                    />
+                {/* Big Vinyl Record with Artist Artwork */}
+                <div className="relative w-40 h-40">
+                  <div className="absolute inset-0 rounded-full bg-orange-600/20 blur-2xl pointer-events-none" />
+                  <div className="relative z-10 w-full h-full rounded-full border-4 border-[#121318] shadow-2xl overflow-hidden bg-black flex items-center justify-center">
+                    {/* Concentric vinyl groove rings */}
+                    <div className="absolute inset-3 rounded-full border border-white/[0.07]" />
+                    <div className="absolute inset-7 rounded-full border border-white/[0.07]" />
+                    <div className="absolute inset-11 rounded-full border border-white/[0.07]" />
+                    {/* Center Artwork */}
+                    <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-orange-400/80 shadow-md">
+                      <SmartArtwork
+                        src={topTracks[0]?.cover}
+                        title={topArtists[0]?.name}
+                        artist={topArtists[0]?.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
                   </div>
-                  <div className="absolute -bottom-1 -right-1 z-20 w-8 h-8 rounded-full bg-amber-400 text-black flex items-center justify-center font-black shadow-lg">
-                    👑
+                  {/* Monospace 01 Badge */}
+                  <div className="absolute -bottom-1 -right-1 z-20 w-8 h-8 rounded-full bg-orange-500 text-black flex items-center justify-center font-black font-mono text-xs shadow-lg">
+                    01
                   </div>
                 </div>
 
@@ -611,25 +651,25 @@ export function StatsModal({
                   <h2 className="text-2xl font-black text-white tracking-tight">
                     {topArtists[0]?.name || 'Belum Ada Artis'}
                   </h2>
-                  <p className="text-xs text-amber-400/90 font-bold mt-0.5">
-                    {topArtists[0]?.plays || 0}x diputar di {activePeriodObj.label}
+                  <p className="text-xs text-orange-400 font-mono font-bold mt-1">
+                    {topArtists[0]?.plays || 0}x Rotasi di {activePeriodObj.label}
                   </p>
                 </div>
 
-                {/* Runner-up Artists */}
+                {/* Runner-up Artists (Festival Lineup Style) */}
                 {topArtists.length > 1 && (
-                  <div className="w-full max-w-xs flex flex-col gap-2 mt-2">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-white/40">
-                      Disusul oleh musisi favoritmu:
+                  <div className="w-full max-w-xs flex flex-col gap-2 mt-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-white/40 font-mono">
+                      Lineup Selanjutnya
                     </span>
-                    <div className="flex items-center justify-center gap-3">
+                    <div className="flex items-center justify-center gap-2">
                       {topArtists.slice(1, 3).map((art, idx) => (
                         <div
                           key={art.name}
-                          className="py-1.5 px-3 rounded-xl bg-white/[0.05] border border-white/10 text-xs font-bold text-white flex items-center gap-1.5"
+                          className="py-1.5 px-3 rounded-xl bg-white/[0.04] border border-white/10 text-xs font-bold text-white flex items-center gap-1.5"
                         >
-                          <span className="text-amber-400 font-mono text-[10px]">#{idx + 2}</span>
-                          <span className="truncate max-w-[90px]">{art.name}</span>
+                          <span className="text-orange-400 font-mono text-[10px]">0{idx + 2}</span>
+                          <span className="truncate max-w-[100px]">{art.name}</span>
                         </div>
                       ))}
                     </div>
@@ -642,10 +682,10 @@ export function StatsModal({
             {currentSlide === 3 && (
               <div className="flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-400">
                 <div className="text-center pb-1">
-                  <span className="text-xs font-extrabold uppercase tracking-widest px-3 py-1 rounded-full bg-[#1ed760]/20 text-[#1ed760] border border-[#1ed760]/30">
-                    Top 5 Lagu Teratas
+                  <span className="text-[11px] font-black uppercase tracking-widest px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 font-mono">
+                    04 // ROTASI TERATAS
                   </span>
-                  <h3 className="text-base font-black text-white mt-1">Lagu Paling Sering Kamu Putar</h3>
+                  <h3 className="text-base font-black text-white mt-1.5">5 Lagu Paling Sering Kamu Putar</h3>
                 </div>
 
                 <div className="flex flex-col gap-2 max-h-[380px] overflow-y-auto scrollbar-none pr-1">
@@ -655,14 +695,14 @@ export function StatsModal({
                       onClick={() => onSelectTrack?.(track)}
                       className={`flex items-center justify-between p-2.5 rounded-2xl border transition-all cursor-pointer group no-story-nav ${
                         idx === 0
-                          ? 'bg-[#1ed760]/15 border-[#1ed760]/40 shadow-[0_0_20px_rgba(30,215,96,0.15)]'
-                          : 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08]'
+                          ? 'bg-yellow-500/15 border-yellow-500/40 shadow-[0_0_20px_rgba(234,179,8,0.15)]'
+                          : 'bg-white/[0.03] border-white/10 hover:bg-white/[0.08]'
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <span
-                          className={`w-5 text-center font-mono text-sm font-black ${
-                            idx === 0 ? 'text-[#1ed760]' : 'text-white/40'
+                          className={`w-6 text-center font-mono text-sm font-black ${
+                            idx === 0 ? 'text-yellow-400' : 'text-white/40'
                           }`}
                         >
                           0{idx + 1}
@@ -683,7 +723,7 @@ export function StatsModal({
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
-                        <span className="text-xs font-bold text-[#1ed760] font-mono">
+                        <span className="text-xs font-bold text-yellow-400 font-mono">
                           {track.plays}x
                         </span>
                       </div>
@@ -693,56 +733,62 @@ export function StatsModal({
               </div>
             )}
 
-            {/* Slide 4: Final Summary & Shareable Story Card */}
+            {/* Slide 4: Final Cassette Pass & High-Res Export */}
             {currentSlide === 4 && (
               <div className="flex flex-col items-center gap-4 text-center animate-in fade-in zoom-in-95 duration-400">
-                <span className="text-xs font-extrabold uppercase tracking-widest px-3 py-1 rounded-full bg-[#1ed760]/20 text-[#1ed760] border border-[#1ed760]/30">
-                  Kartu Musik {activePeriodObj.label}
+                <span className="text-[11px] font-black uppercase tracking-widest px-3 py-1 rounded-full bg-[#1ed760]/20 text-[#1ed760] border border-[#1ed760]/40 font-mono">
+                  05 // KARTU REKAP RESMI
                 </span>
 
-                {/* Compact Story Card Preview */}
-                <div className="w-full max-w-[310px] p-4 rounded-3xl bg-gradient-to-br from-white/[0.08] to-white/[0.02] border border-white/20 shadow-2xl flex flex-col gap-3 text-left">
+                {/* Editorial Cassette Pass Preview */}
+                <div className="w-full max-w-[320px] p-4 rounded-3xl bg-[#0f1118] border border-white/15 shadow-2xl flex flex-col gap-3 text-left">
                   <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
                     <div>
-                      <span className="text-[10px] font-black uppercase text-[#1ed760] tracking-wider block">
-                        OCTAV RECAP
+                      <span className="text-[9px] font-black uppercase text-[#1ed760] tracking-widest font-mono block">
+                        OCTAV ARCHIVE
                       </span>
                       <h4 className="text-sm font-black text-white">{activePeriodObj.label}</h4>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                      {persona.badge}
+                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-300 border border-blue-500/40 font-mono">
+                      {persona.archetypeCode}
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs py-1">
-                    <span className="text-white/60">Waktu Mendengar</span>
-                    <span className="font-black text-[#1ed760]">{totalMinutes} Menit</span>
+                  <div className="grid grid-cols-2 gap-2 text-xs py-1">
+                    <div className="p-2 rounded-xl bg-white/[0.04]">
+                      <span className="text-[10px] text-white/50 font-mono uppercase block">Waktu Dengar</span>
+                      <span className="font-black text-base text-[#1ed760] font-mono">{totalMinutes} Min</span>
+                    </div>
+                    <div className="p-2 rounded-xl bg-white/[0.04]">
+                      <span className="text-[10px] text-white/50 font-mono uppercase block">Total Putar</span>
+                      <span className="font-black text-base text-white font-mono">{totalPlays} Lagu</span>
+                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs py-1 border-t border-white/[0.06]">
-                    <span className="text-white/60">Artis #1</span>
-                    <span className="font-black text-white truncate max-w-[140px]">
+                  <div className="flex items-center justify-between text-xs py-1 border-t border-white/[0.08]">
+                    <span className="text-white/50 font-mono text-[10px] uppercase">Artis #1</span>
+                    <span className="font-bold text-white truncate max-w-[150px]">
                       {topArtists[0]?.name || '-'}
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs py-1 border-t border-white/[0.06]">
-                    <span className="text-white/60">Lagu #1</span>
-                    <span className="font-black text-white truncate max-w-[140px]">
+                  <div className="flex items-center justify-between text-xs py-1 border-t border-white/[0.08]">
+                    <span className="text-white/50 font-mono text-[10px] uppercase">Lagu #1</span>
+                    <span className="font-bold text-white truncate max-w-[150px]">
                       {topTracks[0]?.title || '-'}
                     </span>
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-2 w-full max-w-[310px] no-story-nav mt-1">
+                <div className="flex flex-col gap-2 w-full max-w-[320px] no-story-nav mt-1">
                   <button
                     onClick={handleExportCard}
                     disabled={isExporting || topTracks.length === 0}
-                    className="w-full py-3.5 rounded-2xl bg-[#1ed760] hover:bg-[#1bc456] active:scale-95 text-black font-extrabold text-xs shadow-[0_6px_25px_rgba(30,215,96,0.4)] flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                    className="w-full py-3.5 rounded-2xl bg-[#1ed760] hover:bg-[#1bc456] active:scale-95 text-black font-black text-xs shadow-[0_6px_25px_rgba(30,215,96,0.35)] flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
                   >
                     <Download className="w-4 h-4 stroke-[2.5]" />
                     <span>
-                      {isExporting ? 'Menyiapkan Story...' : 'Unduh Story Card (1080x1920 PNG)'}
+                      {isExporting ? 'Memproses Kartu...' : 'Unduh Story Card (1080x1920 PNG)'}
                     </span>
                   </button>
 
@@ -751,7 +797,7 @@ export function StatsModal({
                       setCurrentSlide(0);
                       setSlideProgress(0);
                     }}
-                    className="w-full py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    className="w-full py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer font-mono"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                     <span>Tonton Ulang Story</span>
@@ -764,38 +810,36 @@ export function StatsModal({
           /* ================= GRID OVERVIEW MODE ================= */
           <div className="flex-1 overflow-y-auto scrollbar-none px-5 py-2 flex flex-col gap-4">
             {/* Header Metrics */}
-            <div className="p-4 rounded-3xl bg-gradient-to-r from-emerald-950/60 to-black/60 border border-[#1ed760]/30 flex items-center justify-between shadow-lg">
+            <div className="p-4.5 rounded-3xl bg-[#0f1118] border border-[#1ed760]/30 flex items-center justify-between shadow-lg">
               <div>
-                <span className="text-[10px] font-black uppercase tracking-wider text-[#1ed760]">
+                <span className="text-[10px] font-black uppercase tracking-wider text-[#1ed760] font-mono">
                   {activePeriodObj.tag}
                 </span>
-                <h3 className="text-3xl font-black text-white">{totalMinutes.toLocaleString()} Menit</h3>
+                <h3 className="text-3xl font-black font-mono text-white mt-0.5">{totalMinutes.toLocaleString()} MIN</h3>
                 <p className="text-xs text-white/60">{totalPlays} lagu diputar di {activePeriodObj.label}</p>
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-[#1ed760]/20 border border-[#1ed760]/30 flex items-center justify-center text-[#1ed760]">
-                <Trophy className="w-6 h-6" />
+              <div className="w-12 h-12 rounded-2xl bg-[#1ed760]/15 border border-[#1ed760]/30 flex items-center justify-center text-[#1ed760]">
+                <BarChart3 className="w-6 h-6 stroke-[2]" />
               </div>
             </div>
 
             {/* Persona Card */}
             <div className="p-4 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-xl">
-                  {persona.badge.split(' ')[0]}
-                </div>
-                <div>
-                  <span className="text-xs font-bold text-white block">{persona.title}</span>
-                  <span className="text-[11px] text-white/50">{persona.tagline}</span>
-                </div>
+              <div>
+                <span className="text-[10px] font-mono font-black uppercase tracking-wider text-blue-400 block mb-0.5">
+                  {persona.badge}
+                </span>
+                <span className="text-sm font-black text-white block">{persona.title}</span>
+                <span className="text-xs text-white/50">{persona.tagline}</span>
               </div>
-              <span className="text-xs font-bold text-purple-300 font-mono">
+              <span className="text-xs font-bold text-blue-300 font-mono">
                 {persona.peakHour} WIB
               </span>
             </div>
 
             {/* Top 5 Tracks */}
             <div className="flex flex-col gap-2">
-              <span className="text-xs font-black uppercase tracking-wider text-white/50">
+              <span className="text-xs font-black uppercase tracking-wider text-white/50 font-mono">
                 Top 5 Lagu Teratas
               </span>
               <div className="flex flex-col gap-1.5">
@@ -806,7 +850,7 @@ export function StatsModal({
                     className="flex items-center justify-between p-2.5 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.08] transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <span className="w-5 text-center font-mono text-xs font-black text-[#1ed760]">
+                      <span className="w-6 text-center font-mono text-xs font-black text-[#1ed760]">
                         0{idx + 1}
                       </span>
                       <SmartArtwork
@@ -832,7 +876,7 @@ export function StatsModal({
             {topArtists.length > 0 && (
               <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs text-white/70">
-                  <Flame className="w-4 h-4 text-amber-400" />
+                  <Flame className="w-4 h-4 text-orange-400" />
                   <span className="font-bold">Musisi Teratas:</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs font-bold text-white">
@@ -853,14 +897,14 @@ export function StatsModal({
               className="w-full py-3.5 rounded-2xl bg-[#1ed760] hover:bg-[#1bc456] text-black font-extrabold text-xs shadow-[0_6px_20px_rgba(30,215,96,0.35)] flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer disabled:opacity-50 mt-1 mb-4"
             >
               <Download className="w-4 h-4 stroke-[2.5]" />
-              <span>{isExporting ? 'Menyiapkan Story...' : 'Unduh Story Card (PNG)'}</span>
+              <span>{isExporting ? 'Memproses Kartu...' : 'Unduh Story Card (PNG)'}</span>
             </button>
           </div>
         )}
 
         {/* ================= BOTTOM BAR HINT ================= */}
         {viewMode === 'story' && (
-          <div className="relative z-30 pb-4 px-6 flex items-center justify-between text-[11px] text-white/40 border-t border-white/[0.06] pt-2.5">
+          <div className="relative z-30 pb-4 px-6 flex items-center justify-between text-[11px] text-white/40 border-t border-white/[0.06] pt-2.5 font-mono">
             <span>Tahan untuk jeda</span>
             <span>
               Slide {currentSlide + 1} dari {TOTAL_SLIDES}

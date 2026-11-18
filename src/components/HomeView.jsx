@@ -7,6 +7,7 @@ import { SmartArtwork } from './SmartArtwork';
 import { useAuth } from '../context/AuthContext';
 import { REAL_PLAYLISTS } from '../data/mockTracks';
 import { searchMusic, fetchTrendingTracks, fetchNewReleases } from '../services/musicApi';
+import { getRecapEventStatus } from '../services/statsService';
 
 const GREETING_PATTERNS = [
   "Hi there, {name}",
@@ -111,9 +112,10 @@ export function HomeView({
       try {
         const query = recommendationBase.artist || recommendationBase.title;
         const res = await searchMusic(query, region);
-        if (active && res.length > 0) {
-          const filtered = res.filter((t) => t.id !== recommendationBase.id).slice(0, 8);
-          setRecommendedTracks(filtered.length > 0 ? filtered : res.slice(0, 8));
+        const trackList = res?.tracks || (Array.isArray(res) ? res : []);
+        if (active && trackList.length > 0) {
+          const filtered = trackList.filter((t) => t.id !== recommendationBase.id).slice(0, 8);
+          setRecommendedTracks(filtered.length > 0 ? filtered : trackList.slice(0, 8));
         }
       } catch (err) {
         console.warn('Failed loading recommendations:', err);
@@ -211,42 +213,81 @@ export function HomeView({
         </h1>
       </div>
 
-      {/* Octav Monthly Recap & Wrapped Event Hero Card */}
+      {/* Octav Monthly Recap Event Hero Card (Active: End of Month day 25 -> Day 2) */}
       {isAll && (
         <div className="px-4 pt-2 pb-1">
-          <div
-            onClick={onOpenRecap}
-            className="relative overflow-hidden rounded-3xl p-4 cursor-pointer border border-[#1ed760]/30 hover:border-[#1ed760]/60 active:scale-[0.99] transition-all shadow-[0_12px_35px_rgba(0,0,0,0.5)] group"
-            style={{
-              background:
-                'linear-gradient(135deg, rgba(30, 215, 96, 0.16) 0%, rgba(139, 92, 246, 0.14) 50%, rgba(10, 10, 16, 0.8) 100%)',
-              backdropFilter: 'blur(24px) saturate(180%)',
-            }}
-          >
-            {/* Animated Ambient Bleed */}
-            <div className="absolute top-0 right-0 w-36 h-36 bg-[#1ed760]/20 rounded-full blur-2xl group-hover:scale-125 transition-transform duration-700 pointer-events-none" />
+          {(() => {
+            const recapEvent = getRecapEventStatus();
+            if (recapEvent.isActive) {
+              return (
+                <div
+                  onClick={onOpenRecap}
+                  className="relative overflow-hidden rounded-3xl p-4.5 cursor-pointer border border-[#1ed760]/40 hover:border-[#1ed760] active:scale-[0.99] transition-all shadow-[0_16px_40px_rgba(0,0,0,0.6)] group bg-[#090b10]"
+                  style={{
+                    background: 'linear-gradient(135deg, #0e1612 0%, #090a10 60%, #130e1c 100%)',
+                  }}
+                >
+                  {/* Subtle Grain & Ambient Accent */}
+                  <div className="absolute top-0 right-0 w-44 h-44 bg-[#1ed760]/15 rounded-full blur-3xl pointer-events-none group-hover:scale-125 transition-transform duration-700" />
+                  <div className="absolute bottom-0 left-1/3 w-32 h-32 bg-purple-600/10 rounded-full blur-2xl pointer-events-none" />
 
-            <div className="relative z-10 flex items-center justify-between">
-              <div className="flex flex-col gap-1 pr-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-[#1ed760]/25 text-[#1ed760] border border-[#1ed760]/40">
-                    EVENT BULANAN
-                  </span>
-                  <span className="text-[10px] font-bold text-white/50">• November 2026</span>
+                  <div className="relative z-10 flex items-center justify-between">
+                    <div className="flex flex-col gap-1 pr-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-[#1ed760] text-black font-mono shadow-sm">
+                          EVENT BULANAN
+                        </span>
+                        <span className="text-[10px] font-bold text-white/50 tracking-wider">
+                          LIVE SEKARANG
+                        </span>
+                      </div>
+                      <h3 className="text-base font-black text-white tracking-tight leading-snug group-hover:text-[#1ed760] transition-colors mt-0.5">
+                        {recapEvent.label} Recap
+                      </h3>
+                      <p className="text-xs text-white/60 leading-tight">
+                        Waktu mendengar, artis rotasi utama, dan sound persona bulan ini siap dieksplor.
+                      </p>
+                    </div>
+
+                    <div className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-2xl bg-[#1ed760] text-black shadow-[0_4px_20px_rgba(30,215,96,0.4)] group-hover:scale-110 active:scale-95 transition-all">
+                      <Sparkles className="w-5 h-5 fill-current" />
+                    </div>
+                  </div>
                 </div>
-                <h3 className="text-base font-black text-white tracking-tight leading-snug group-hover:text-[#1ed760] transition-colors">
-                  November Recap Kamu Sudah Siap!
-                </h3>
-                <p className="text-xs text-white/60 leading-tight">
-                  Lihat total menit mendengarkan, artis terfavorit, dan listening persona bulan ini.
-                </p>
-              </div>
+              );
+            }
 
-              <div className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-2xl bg-[#1ed760] text-black shadow-[0_4px_16px_rgba(30,215,96,0.5)] group-hover:scale-110 active:scale-95 transition-all">
-                <Sparkles className="w-5 h-5 fill-current" />
+            // Outside recap window (e.g. Day 3 -> 24): Editorial Scheduled Teaser Card
+            return (
+              <div
+                onClick={onOpenRecap}
+                className="relative overflow-hidden rounded-3xl p-4 cursor-pointer border border-white/[0.12] hover:border-white/25 active:scale-[0.99] transition-all bg-[#0a0a0f] group shadow-md"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-1 pr-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/[0.08] text-white/70 border border-white/10 font-mono">
+                        EVENT BULANAN
+                      </span>
+                      <span className="text-[10px] font-semibold text-white/40">
+                        {recapEvent.nextEventDate} – 2 {recapEvent.recapMonthName}
+                      </span>
+                    </div>
+                    <h3 className="text-sm font-black text-white tracking-tight group-hover:text-[#1ed760] transition-colors mt-0.5">
+                      {recapEvent.label} Recap
+                    </h3>
+                    <p className="text-xs text-white/50 leading-tight">
+                      Diadakan setiap akhir bulan (tgl 25 s/d 2 berikutnya). Ketuk untuk preview catatan musikmu.
+                    </p>
+                  </div>
+
+                  <div className="flex-shrink-0 px-3 py-1.5 rounded-xl bg-white/[0.07] border border-white/10 text-xs font-bold text-white/80 group-hover:bg-[#1ed760] group-hover:text-black group-hover:border-[#1ed760] transition-all">
+                    Preview
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            );
+          })()}
         </div>
       )}
 
