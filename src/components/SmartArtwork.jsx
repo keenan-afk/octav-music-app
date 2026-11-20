@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Disc, Music, User } from 'lucide-react';
-import { safeTimeoutSignal, isArtistFuzzyMatch, fetchArtistPortrait } from '../services/musicApi';
+import { safeTimeoutSignal, isArtistStrictMatch, fetchArtistPortrait } from '../services/musicApi';
 
 // In-memory cache for auto-recovered artwork URLs
 const artworkCache = new Map();
@@ -9,8 +9,8 @@ const artworkCache = new Map();
  * SmartArtwork Component
  * Bulletproof album artwork & artist portrait resolver:
  * - Normalizes URLs (forcing https://)
- * - Strict verification: NEVER swaps artist photo with another person, NEVER swaps song cover with another track
- * - High-resolution Apple Music / Deezer portrait recovery
+ * - Strict verification: NEVER swaps artist photo with another person, NEVER swaps song/album cover with another track
+ * - High-resolution Apple Music verified portrait & album recovery
  * - Sleek dark liquid glass vinyl disc fallback with concentric specular rings (zero broken image icons)
  * - Supports 2x2 mosaic preview for custom playlists
  */
@@ -23,11 +23,17 @@ export function SmartArtwork({
   mosaicCovers = null,
   rounded = 'rounded-lg',
   isArtist = false,
+  isAlbum = false,
   style = {},
   ...props
 }) {
-  const isArtistQuery = isArtist || (title && artist && title.toLowerCase().trim() === artist.toLowerCase().trim()) || (!title && artist);
-  const cacheKey = `${isArtistQuery ? 'artist' : 'song'}_${title}_${artist}`.trim().toLowerCase();
+  const isArtistQuery =
+    isArtist ||
+    (!isAlbum && title && artist && title.toLowerCase().trim() === artist.toLowerCase().trim()) ||
+    (!isAlbum && !title && artist);
+  const cacheKey = `${isArtistQuery ? 'artist' : isAlbum ? 'album' : 'song'}_${title}_${artist}`
+    .trim()
+    .toLowerCase();
   const initialSrc = src ? src.replace(/^http:\/\//i, 'https://') : (artworkCache.get(cacheKey) || '');
 
   const [currentSrc, setCurrentSrc] = useState(initialSrc);
@@ -64,7 +70,7 @@ export function SmartArtwork({
     setIsRecovering(true);
 
     try {
-      // 1. If this is an ARTIST portrait: Query official artist catalog (Deezer)
+      // 1. If this is an ARTIST portrait: Query official artist catalog (verified Apple Music)
       if (isArtistQuery) {
         const targetArtist = artist || title;
         const portrait = await fetchArtistPortrait(targetArtist);
@@ -75,13 +81,58 @@ export function SmartArtwork({
           setIsRecovering(false);
           return;
         }
+        setIsRecovering(false);
+        setHasError(true);
+        return;
       }
 
-      // 2. If this is a SONG: Query Apple Music iTunes with strict artist AND title matching
       const targetTitle = (title || '').trim();
       const targetArtist = (artist || '').trim();
       const cleanTitle = targetTitle.toLowerCase().replace(/[^\w\s]/g, '').trim();
 
+      // 2. If this is an ALBUM: Query Apple Music iTunes entity=album strictly
+      if (isAlbum) {
+        const term = `${targetTitle} ${targetArtist}`.trim();
+        const url = `https://itunes.apple.com/search?media=music&entity=album&limit=5&term=${encodeURIComponent(
+          term
+        )}`;
+        const res = await fetch(url, { signal: safeTimeoutSignal(3500) });
+        if (res.ok) {
+          const data = await res.json();
+          const results = data.results || [];
+          const match = results.find((item) => {
+            const itemArtist = (item.artistName || '').toLowerCase().trim();
+            const itemAlbum = (item.collectionName || '').toLowerCase().trim();
+            const cleanItemAlbum = itemAlbum.replace(/[^\w\s]/g, '').trim();
+
+            const artistMatches = targetArtist ? isArtistStrictMatch(itemArtist, targetArtist) : true;
+            if (!artistMatches) return false;
+
+            const albumMatches =
+              !cleanTitle ||
+              itemAlbum === targetTitle.toLowerCase().trim() ||
+              cleanItemAlbum === cleanTitle ||
+              cleanItemAlbum.startsWith(cleanTitle) ||
+              cleanTitle.startsWith(cleanItemAlbum);
+
+            return albumMatches;
+          });
+
+          if (match?.artworkUrl100) {
+            const recovered = match.artworkUrl100.replace('100x100bb.jpg', '600x600bb.jpg');
+            artworkCache.set(cacheKey, recovered);
+            setCurrentSrc(recovered);
+            setHasError(false);
+            setIsRecovering(false);
+            return;
+          }
+        }
+        setIsRecovering(false);
+        setHasError(true);
+        return;
+      }
+
+      // 3. If this is a SONG: Query Apple Music iTunes entity=song strictly
       const term = `${targetTitle} ${targetArtist}`.trim();
       const url = `https://itunes.apple.com/search?media=music&entity=song&limit=5&term=${encodeURIComponent(
         term
@@ -99,7 +150,7 @@ export function SmartArtwork({
           const itemTitle = (item.trackName || '').toLowerCase().trim();
           const cleanItemTitle = itemTitle.replace(/[^\w\s]/g, '').trim();
 
-          const artistMatches = targetArtist ? isArtistFuzzyMatch(itemArtist, targetArtist) : true;
+          const artistMatches = targetArtist ? isArtistStrictMatch(itemArtist, targetArtist) : true;
           if (!artistMatches) return false;
 
           const titleMatches =
@@ -165,8 +216,20 @@ export function SmartArtwork({
     }
   }
 
-  // Broken or Loading Fallback: Liquid Glass Vinyl Disc
+  // Broken or Loading Fallback: Liquid Glass Vinyl Disc or Artist Silhouette
   if (hasError || !currentSrc) {
+    if (isArtistQuery) {
+      return (
+        <div
+          className={`relative flex items-center justify-center overflow-hidden bg-neutral-900 border border-white/[0.1] ${rounded} ${className}`}
+          style={style}
+          {...props}
+        >
+          <User className="w-1/2 h-1/2 text-white/30" />
+        </div>
+      );
+    }
+
     return (
       <div
         className={`relative flex items-center justify-center overflow-hidden bg-[#111116] border border-white/[0.08] ${rounded} ${className}`}

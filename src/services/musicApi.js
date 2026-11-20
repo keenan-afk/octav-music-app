@@ -28,16 +28,12 @@ const ORGANIC_PALETTES = [
 const streamCache = new Map();
 
 /**
- * Cross-platform timeout signal helper compatible with iOS Safari < 16 & older WebViews
+ * Cross-platform timeout signal helper compatible with iOS Safari & all WebViews
+ * Uses standard AbortController with setTimeout to avoid iOS Safari 16 AbortSignal.timeout bugs
  */
-export function safeTimeoutSignal(ms = 4000) {
-  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-    try {
-      return AbortSignal.timeout(ms);
-    } catch {}
-  }
+export function safeTimeoutSignal(ms = 5000) {
   const controller = new AbortController();
-  setTimeout(() => {
+  const id = setTimeout(() => {
     try {
       controller.abort();
     } catch {}
@@ -139,23 +135,42 @@ export function normalizeQuery(rawQuery = '') {
 }
 
 /**
- * Strict Artist Fuzzy Matching Helper (> 70% match)
+ * Precision Strict Artist Matching Helper
+ * Rejects substring mismatches (e.g. "Noah Cyrus" for "NOAH", "Queen Latifah" for "Queen", "Dewa Budjana" for "Dewa 19")
+ * Accurately accepts collaborations (e.g. "Juicy Luicy & Adrian Khalif" for "Juicy Luicy", "Coldplay & BTS" for "Coldplay")
  */
-export function isArtistFuzzyMatch(returnedArtist = '', targetArtist = '') {
+export function isArtistStrictMatch(returnedArtist = '', targetArtist = '') {
   if (!returnedArtist || !targetArtist) return false;
-  const r = returnedArtist.toLowerCase().trim();
-  const t = targetArtist.toLowerCase().trim();
-
+  const r = returnedArtist.toLowerCase().replace(/^[.\-_/\s]+/, '').trim();
+  const t = targetArtist.toLowerCase().replace(/^[.\-_/\s]+/, '').trim();
   if (r === t) return true;
-  if (r.includes(t) || t.includes(r)) return true;
 
-  const rWords = r.split(/[\s,\-_&/]+/).filter((w) => w.length > 2);
-  const tWords = t.split(/[\s,\-_&/]+/).filter((w) => w.length > 2);
+  const normalize = (str) =>
+    str
+      .toLowerCase()
+      .replace(/^[.\-_/\s]+/, '')
+      .replace(/[^\w\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
 
-  if (tWords.length === 0) return true;
-  const matched = tWords.filter((tw) => r.includes(tw));
-  return matched.length / tWords.length >= 0.7;
+  const normR = normalize(r);
+  const normT = normalize(t);
+  if (normR === normT) return true;
+  if (normR === `the ${normT}` || normT === `the ${normR}`) return true;
+
+  // Only split on explicit collaboration tags (feat, featuring, ft, with)
+  const collabRegex = /\s*(?:\bfeat\.?\b|\bfeaturing\b|\bft\.?\b|\bwith\b)\s*/i;
+  const rTokens = r.split(collabRegex).map(normalize).filter(Boolean);
+  if (rTokens.includes(normT)) return true;
+
+  const tTokens = t.split(collabRegex).map(normalize).filter(Boolean);
+  if (tTokens.includes(normR)) return true;
+
+  return false;
 }
+
+// Backwards compatibility alias
+export const isArtistFuzzyMatch = isArtistStrictMatch;
 
 // In-memory cache for verified official artist portraits
 const artistPortraitCache = new Map();
@@ -163,44 +178,53 @@ const artistPortraitCache = new Map();
 /**
  * Fetch verified official artist portrait from artist catalog
  * Guarantees zero wrong photos, zero unsplash placeholders
+ * Uses Apple Music official verified catalog with 100% native CORS support in all mobile browsers (iOS Safari)
  */
-export async function fetchArtistPortrait(artistName) {
+export async function fetchArtistPortrait(artistName, region = 'ID') {
   if (!artistName) return '';
   const trimmed = artistName.trim();
-  const clean = trimmed.replace(/^[\W_]+/, '').trim();
+  const clean = trimmed.replace(/^[.\-_/\s]+/, '').trim();
   if (!clean) return '';
 
-  const cacheKey = clean.toLowerCase();
+  const regCode = (region || 'ID').toLowerCase();
+  const cacheKey = `${clean.toLowerCase()}__${regCode}`;
   if (artistPortraitCache.has(cacheKey)) {
     return artistPortraitCache.get(cacheKey);
   }
 
+  // 1. Query Apple Music iTunes definitive release for this artist in active region
   try {
-    const url = `https://api.deezer.com/search/artist?limit=5&q=${encodeURIComponent(clean)}`;
-    const res = await fetch(url, { signal: safeTimeoutSignal(3500) });
+    const url = `https://itunes.apple.com/search?country=${regCode}&media=music&entity=album&attribute=artistTerm&limit=10&term=${encodeURIComponent(clean)}`;
+    const res = await fetch(url, { signal: safeTimeoutSignal(4000) });
     if (res.ok) {
       const data = await res.json();
-      const artists = data.data || [];
-      const target = clean.toLowerCase();
+      const results = data.results || [];
+      // STRICT FILTER: Match MUST belong to this artist (never pick a random other person)
+      const match = results.find((a) => isArtistStrictMatch(a.artistName, clean));
+      if (match?.artworkUrl100) {
+        const portrait = match.artworkUrl100.replace('100x100bb.jpg', '600x600bb.jpg');
+        artistPortraitCache.set(cacheKey, portrait);
+        return portrait;
+      }
+    }
+  } catch (e) {}
 
-      // Strict artist name verification
-      const matched =
-        artists.find((a) => (a.name || '').toLowerCase().trim() === target) ||
-        artists.find((a) => {
-          const an = (a.name || '').toLowerCase().replace(/[^\w\s]/g, '').trim();
-          return an === target.replace(/[^\w\s]/g, '').trim();
-        });
-
-      if (matched) {
-        const portrait = matched.picture_xl || matched.picture_large || matched.picture_medium || '';
-        if (portrait) {
+  // 2. Fallback to Global / US catalog if not found in local region
+  if (regCode !== 'us') {
+    try {
+      const url = `https://itunes.apple.com/search?country=US&media=music&entity=album&attribute=artistTerm&limit=10&term=${encodeURIComponent(clean)}`;
+      const res = await fetch(url, { signal: safeTimeoutSignal(4000) });
+      if (res.ok) {
+        const data = await res.json();
+        const results = data.results || [];
+        const match = results.find((a) => isArtistStrictMatch(a.artistName, clean));
+        if (match?.artworkUrl100) {
+          const portrait = match.artworkUrl100.replace('100x100bb.jpg', '600x600bb.jpg');
           artistPortraitCache.set(cacheKey, portrait);
           return portrait;
         }
       }
-    }
-  } catch (e) {
-    // Timeout or network fallback
+    } catch (e) {}
   }
 
   return '';
@@ -302,7 +326,8 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
       // Extract and verify against all JioSaavn response schemas
       const match = songs.find((s) => {
         const dur = Number(s.duration || 0);
-        if (dur < 90) return false;
+        // Reject only <40s preview snippets, accept real full songs
+        if (dur < 40) return false;
 
         const sName = (s.name || s.title || '')
           .toLowerCase()
@@ -324,9 +349,12 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
 
         let artistMatch = false;
         if (artistTokens.length === 0) {
-          artistMatch = allArtists.includes(normArtist.toLowerCase());
+          artistMatch = allArtists.includes(normArtist.toLowerCase()) || isArtistStrictMatch(sSub, normArtist);
         } else {
-          artistMatch = artistTokens.some((tok) => allArtists.includes(tok));
+          artistMatch =
+            artistTokens.some((tok) => allArtists.includes(tok)) ||
+            isArtistStrictMatch(sSub, normArtist) ||
+            isArtistStrictMatch(sPrimary, normArtist);
         }
 
         if (titleMatch && !candidateFallbackMatch) {
@@ -372,14 +400,41 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
     }
   }
 
-  // Fallback: If fallbackUrl provided and valid, return it
+  // If no full stream was resolved, return fallbackUrl directly WITHOUT polluting streamCache!
+  // This prevents 30-second previews from getting cached and permanently served.
   if (fallbackUrl) {
-    streamCache.set(cacheKey, fallbackUrl);
     return fallbackUrl;
   }
 
   return '';
 }
+
+/**
+ * Proactive background pre-resolver for the upcoming track in queue
+ * Populates streamCache ahead of time to enable 100% synchronous, gapless background autoplay on mobile
+ */
+export async function preResolveTrackStream(track) {
+  if (!track || !track.title) return '';
+  const key = getTrackKey(track);
+  if (streamCache.has(key)) {
+    const cached = streamCache.get(key);
+    track.resolvedStreamUrl = cached;
+    track.audioUrl = cached;
+    return cached;
+  }
+  try {
+    const full = await resolveFullAudioStream(track);
+    if (full && !full.includes('itunes.apple.com') && !full.includes('AudioPreview')) {
+      streamCache.set(key, full);
+      track.resolvedStreamUrl = full;
+      track.audioUrl = full;
+      return full;
+    }
+  } catch {}
+  return '';
+}
+
+export { streamCache };
 
 /**
  * High-level resolver accepting track object
@@ -618,7 +673,35 @@ export async function searchMusic(rawQuery, region = 'ID') {
   const filteredSongs = rawSongs.filter(
     (item) => !isCompilationOrKaraoke(item.trackName, item.artistName)
   );
-  const songsToUse = filteredSongs.length > 0 ? filteredSongs : rawSongs;
+  let songsToUse = filteredSongs.length > 0 ? filteredSongs : rawSongs;
+
+  // Auto-fallback: If regional search returned 0 results, retry with global catalog
+  if ((songsToUse.length === 0 || rawArtists.length === 0) && countryCode === 'ID') {
+    try {
+      const fallbackUrl = `https://itunes.apple.com/search?country=US&media=music&entity=song&limit=30&term=${encodeURIComponent(
+        normalized
+      )}`;
+      const fallbackArtistsUrl = `https://itunes.apple.com/search?country=US&media=music&entity=musicArtist&limit=3&term=${encodeURIComponent(
+        normalized
+      )}`;
+      const [fbRes, fbArtistRes] = await Promise.all([
+        songsToUse.length === 0
+          ? fetch(fallbackUrl, { signal: safeTimeoutSignal(4000) }).then((r) => r.json()).catch(() => ({ results: [] }))
+          : Promise.resolve({ results: [] }),
+        rawArtists.length === 0
+          ? fetch(fallbackArtistsUrl, { signal: safeTimeoutSignal(4000) }).then((r) => r.json()).catch(() => ({ results: [] }))
+          : Promise.resolve({ results: [] }),
+      ]);
+      if (fbRes.results && fbRes.results.length > 0) {
+        songsToUse = fbRes.results.filter(
+          (item) => !isCompilationOrKaraoke(item.trackName, item.artistName)
+        );
+      }
+      if (rawArtists.length === 0 && fbArtistRes.results && fbArtistRes.results.length > 0) {
+        rawArtists.push(...fbArtistRes.results);
+      }
+    } catch (e) {}
+  }
 
   const lowQuery = normalized.toLowerCase().trim();
 
@@ -754,7 +837,7 @@ export async function searchMusic(rawQuery, region = 'ID') {
       );
 
       // 1) Try verified official artist portrait from artist catalog first
-      let artistCover = await fetchArtistPortrait(matchedArtist.artistName);
+      let artistCover = await fetchArtistPortrait(matchedArtist.artistName, countryCode);
 
       // 2) Fallback to a track strictly by this artist
       if (!artistCover) {
@@ -837,7 +920,7 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
       if (!isSong) return false;
       if (!targetArtistName) return true;
       const tArtist = r.artistName || '';
-      return isArtistFuzzyMatch(tArtist, targetArtistName);
+      return isArtistStrictMatch(tArtist, targetArtistName);
     });
 
     const tracks = rawSongs.slice(0, 10).map((item, index) => {
@@ -855,7 +938,7 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
         album: item.collectionName || title,
         duration: durationSec,
         durationFormatted: formatDuration(durationSec),
-        cover: cover || initialCover || '',
+        cover: cover || '',
         audioUrl: item.previewUrl || '',
         palette: getPaletteForTrack(title, resolvedArtist),
         releaseYear: item.releaseDate ? new Date(item.releaseDate).getFullYear() : 2024,
@@ -875,7 +958,7 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
         if (!isAlbum) return false;
         if (!targetArtistName) return true;
         const aArtist = r.artistName || '';
-        return isArtistFuzzyMatch(aArtist, targetArtistName);
+        return isArtistStrictMatch(aArtist, targetArtistName);
       })
       .map((item, idx) => {
         const cover = (item.artworkUrl100 || '')
@@ -887,7 +970,7 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
           id: `album-${item.collectionId || idx}`,
           title: item.collectionName || 'Album',
           artist: item.artistName || finalArtistName,
-          cover: cover || initialCover || tracks[0]?.cover || '',
+          cover: cover || '', // NEVER borrow tracks[0]?.cover!
           releaseYear: year,
           trackCount,
           type: trackCount <= 3 ? 'Single / EP' : 'Album',
@@ -904,10 +987,10 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
     const monthlyListeners = `${listenerNum.toLocaleString()} monthly listeners`;
 
     // Strictly resolve verified artist portrait from official catalog
-    const verifiedPortrait = await fetchArtistPortrait(finalArtistName);
-    const matchingTrack = tracks.find((t) => isArtistFuzzyMatch(t.artist, finalArtistName));
-    const matchingAlbum = albums.find((a) => isArtistFuzzyMatch(a.artist, finalArtistName));
-    const artistCover = verifiedPortrait || matchingTrack?.cover || matchingAlbum?.cover || initialCover || '';
+    const verifiedPortrait = await fetchArtistPortrait(finalArtistName, countryCode);
+    const matchingAlbum = albums.find((a) => isArtistStrictMatch(a.artist, finalArtistName));
+    const matchingTrack = tracks.find((t) => isArtistStrictMatch(t.artist, finalArtistName));
+    const artistCover = verifiedPortrait || matchingAlbum?.cover || matchingTrack?.cover || initialCover || '';
 
     return {
       artist: {

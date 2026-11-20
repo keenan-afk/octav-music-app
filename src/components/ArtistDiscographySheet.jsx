@@ -243,7 +243,7 @@ export function ArtistDiscographySheet({
             Popular Releases ({tracks.length})
           </h2>
           <span className="text-[11px] font-semibold text-[#1ed760] flex items-center gap-1">
-            <Sparkles className="w-3 h-3" /> Canonical Apple Index
+            <Sparkles className="w-3 h-3" /> Popular Tracks
           </span>
         </div>
 

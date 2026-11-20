@@ -7,6 +7,8 @@ import {
   fetchSmartRadioRecommendations,
   getTrackDedupeKey,
   getTrackKey,
+  preResolveTrackStream,
+  streamCache,
 } from '../services/musicApi';
 import { syncUserDataToCloud, fetchUserDataFromCloud } from '../services/supabaseClient';
 import { recordTrackPlay } from '../services/statsService';
@@ -316,6 +318,15 @@ export function useAudioController(user = null, region = 'ID') {
             audio.volume = volume;
           }
         }
+
+        // Proactively pre-resolve upcoming track in the queue when nearing end (<30s)
+        if (audio.duration > 35 && audio.duration - cur < 30) {
+          const curQueue = playlistQueue;
+          const curIdx = curQueue.findIndex((t) => t.id === currentTrack?.id);
+          if (curIdx !== -1 && curIdx + 1 < curQueue.length) {
+            preResolveTrackStream(curQueue[curIdx + 1]).catch(() => {});
+          }
+        }
       }
     };
 
@@ -333,8 +344,12 @@ export function useAudioController(user = null, region = 'ID') {
         isManualPauseRef.current = false;
         return;
       }
+      // Do not auto-recover if at the end of the track or ended
+      if (audio.ended || (audio.duration > 0 && Math.abs(audio.currentTime - audio.duration) < 0.8)) {
+        return;
+      }
       // Auto-recover if iOS paused audio unexpectedly in the background while state is active
-      if (isPlayingRef.current && !audio.ended && audio.currentTime > 0) {
+      if (isPlayingRef.current && audio.currentTime > 0) {
         audio.play().catch(() => {
           setIsPlaying(false);
         });
@@ -548,65 +563,87 @@ export function useAudioController(user = null, region = 'ID') {
       }
 
       // iOS Safari Synchronous Gesture Continuity:
-      // When transitioning from an ended track, immediately set the source if available and trigger play()
-      if (fromEnded && audio && track.audioUrl) {
-        audio.src = track.audioUrl;
+      // Check if instant full-length stream URL is already available in memory cache or track
+      const cachedFullStream = streamCache.get(tKey);
+      const instantUrl =
+        cachedFullStream ||
+        track.resolvedStreamUrl ||
+        (track.audioUrl && !track.audioUrl.includes('itunes.apple.com') && !track.audioUrl.includes('AudioPreview')
+          ? track.audioUrl
+          : '');
+
+      // When transitioning from an ended track, immediately set the source if available and trigger play() synchronously!
+      // This enables uninterrupted background and lockscreen autoplay on iOS Safari.
+      if (fromEnded && audio && instantUrl) {
+        audio.src = instantUrl;
         audio.playbackRate = playbackSpeed;
         audio.currentTime = 0;
         audio.play().catch(() => {});
       }
 
-      // 2. CRITICAL BUG 1 FIX: Resolve 100% Full-Length Audio Stream (>=90s)
+      // Proactively pre-resolve the NEXT track in queue right now so it's ready ahead of time!
+      const nextIdx = currentIdx !== -1 ? currentIdx + 1 : -1;
+      if (nextIdx !== -1 && nextIdx < effectiveQueue.length) {
+        preResolveTrackStream(effectiveQueue[nextIdx]).catch(() => {});
+      }
+
+      // Resolve 100% Full-Length Audio Stream
       audioEqualizer.resume();
 
       try {
-        const fullStreamUrl = await resolveFullAudioStream(track);
-        const finalUrl = fullStreamUrl || track.audioUrl || track.previewUrl;
+        const fullStreamUrl = cachedFullStream || (await resolveFullAudioStream(track));
+        const finalUrl = fullStreamUrl || instantUrl || track.audioUrl || track.previewUrl;
 
         if (audio) {
+          // If already playing this exact source (from synchronous fromEnded trigger), DO NOT re-assign audio.src!
+          // Re-assigning audio.src aborts ongoing playback in mobile Safari!
           if (audio.src !== finalUrl) {
             audio.src = finalUrl;
             audio.playbackRate = playbackSpeed;
             audio.currentTime = 0;
-          }
 
-          if (crossfadeDuration > 0) {
-            audio.volume = 0;
-            audio
-              .play()
-              .then(() => {
-                setIsPlaying(true);
-                // Smooth Fade-In volume ramp over 1.5s
-                let step = 0;
-                const totalSteps = 15;
-                const stepMs = 100;
-                const timer = setInterval(() => {
-                  step++;
-                  if (audioRef.current && step <= totalSteps) {
-                    audioRef.current.volume = Math.min(volume, (step / totalSteps) * volume);
-                  } else {
-                    clearInterval(timer);
-                    if (audioRef.current) audioRef.current.volume = volume;
-                  }
-                }, stepMs);
-              })
-              .catch((err) => {
-                console.warn('Playback requires user gesture or stream error:', err);
-              });
+            if (crossfadeDuration > 0) {
+              audio.volume = 0;
+              audio
+                .play()
+                .then(() => {
+                  setIsPlaying(true);
+                  // Smooth Fade-In volume ramp over 1.5s
+                  let step = 0;
+                  const totalSteps = 15;
+                  const stepMs = 100;
+                  const timer = setInterval(() => {
+                    step++;
+                    if (audioRef.current && step <= totalSteps) {
+                      audioRef.current.volume = Math.min(volume, (step / totalSteps) * volume);
+                    } else {
+                      clearInterval(timer);
+                      if (audioRef.current) audioRef.current.volume = volume;
+                    }
+                  }, stepMs);
+                })
+                .catch((err) => {
+                  console.warn('Playback requires user gesture or stream error:', err);
+                });
+            } else {
+              audio.volume = volume;
+              audio
+                .play()
+                .then(() => {
+                  setIsPlaying(true);
+                })
+                .catch((err) => {
+                  console.warn('Playback requires user gesture or stream error:', err);
+                });
+            }
           } else {
-            audio.volume = volume;
-            audio
-              .play()
-              .then(() => {
-                setIsPlaying(true);
-              })
-              .catch((err) => {
-                console.warn('Playback requires user gesture or stream error:', err);
-              });
+            // Already set and playing smoothly
+            setIsPlaying(true);
+            setIsLoading(false);
           }
         }
 
-        setCurrentTrack((prev) => (prev.id === track.id ? { ...prev, audioUrl: finalUrl } : prev));
+        setCurrentTrack((prev) => (prev?.id === track.id ? { ...prev, audioUrl: finalUrl } : prev));
       } catch (err) {
         console.warn('Stream resolution error:', err);
         setIsLoading(false);
