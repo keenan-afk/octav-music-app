@@ -214,6 +214,21 @@ export function useAudioController(user = null, region = 'ID') {
   const seekToRef = useRef();
   const isManualPauseRef = useRef(false);
 
+  const currentTrackRef = useRef(currentTrack);
+  useEffect(() => {
+    currentTrackRef.current = currentTrack;
+  }, [currentTrack]);
+
+  const playlistQueueRef = useRef(playlistQueue);
+  useEffect(() => {
+    playlistQueueRef.current = playlistQueue;
+  }, [playlistQueue]);
+
+  const isShuffleRef = useRef(isShuffle);
+  useEffect(() => {
+    isShuffleRef.current = isShuffle;
+  }, [isShuffle]);
+
   const isPlayingRef = useRef(isPlaying);
   useEffect(() => {
     isPlayingRef.current = isPlaying;
@@ -223,6 +238,21 @@ export function useAudioController(user = null, region = 'ID') {
   useEffect(() => {
     repeatModeRef.current = repeatMode;
   }, [repeatMode]);
+
+  const volumeRef = useRef(volume);
+  useEffect(() => {
+    volumeRef.current = volume;
+  }, [volume]);
+
+  const crossfadeDurationRef = useRef(crossfadeDuration);
+  useEffect(() => {
+    crossfadeDurationRef.current = crossfadeDuration;
+  }, [crossfadeDuration]);
+
+  const playbackSpeedRef = useRef(playbackSpeed);
+  useEffect(() => {
+    playbackSpeedRef.current = playbackSpeed;
+  }, [playbackSpeed]);
 
   // Derived set of liked track IDs
   const likedTrackIds = new Set(likedTracks.map((t) => t.id));
@@ -274,11 +304,11 @@ export function useAudioController(user = null, region = 'ID') {
       // True Track Duration from Full Audio Stream
       if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
         setDuration(Math.floor(audio.duration));
-      } else if (currentTrack?.duration) {
-        setDuration(currentTrack.duration);
+      } else if (currentTrackRef.current?.duration) {
+        setDuration(currentTrackRef.current.duration);
       }
       setIsLoading(false);
-      audio.playbackRate = playbackSpeed;
+      audio.playbackRate = playbackSpeedRef.current || 1.0;
 
       if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession && audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
         try {
@@ -308,21 +338,25 @@ export function useAudioController(user = null, region = 'ID') {
           return;
         }
 
-        // Smooth Crossfade volume fade-out near track end
-        if (crossfadeDuration > 0 && audio.duration > 0) {
+        const crossfade = crossfadeDurationRef.current || 0;
+        const curVol = volumeRef.current || 1.0;
+
+        // Smooth Crossfade volume fade-out near track end (only when visible to avoid throttled background timers)
+        if (crossfade > 0 && audio.duration > 0 && !document.hidden) {
           const timeLeft = audio.duration - cur;
-          if (timeLeft <= crossfadeDuration && timeLeft > 0) {
-            const factor = Math.max(0, timeLeft / crossfadeDuration);
-            audio.volume = factor * volume;
+          if (timeLeft <= crossfade && timeLeft > 0) {
+            const factor = Math.max(0, timeLeft / crossfade);
+            audio.volume = factor * curVol;
           } else {
-            audio.volume = volume;
+            audio.volume = curVol;
           }
         }
 
         // Proactively pre-resolve upcoming track in the queue when nearing end (<30s)
         if (audio.duration > 35 && audio.duration - cur < 30) {
-          const curQueue = playlistQueue;
-          const curIdx = curQueue.findIndex((t) => t.id === currentTrack?.id);
+          const curQueue = playlistQueueRef.current || [];
+          const cTrack = currentTrackRef.current;
+          const curIdx = curQueue.findIndex((t) => t.id === cTrack?.id);
           if (curIdx !== -1 && curIdx + 1 < curQueue.length) {
             preResolveTrackStream(curQueue[curIdx + 1]).catch(() => {});
           }
@@ -562,7 +596,7 @@ export function useAudioController(user = null, region = 'ID') {
         triggerAutoQueue(track, false);
       }
 
-      // iOS Safari Synchronous Gesture Continuity:
+      // iOS & Android Synchronous Continuity:
       // Check if instant full-length stream URL is already available in memory cache or track
       const cachedFullStream = streamCache.get(tKey);
       const instantUrl =
@@ -572,13 +606,18 @@ export function useAudioController(user = null, region = 'ID') {
           ? track.audioUrl
           : '');
 
-      // When transitioning from an ended track, immediately set the source if available and trigger play() synchronously!
-      // This enables uninterrupted background and lockscreen autoplay on iOS Safari.
-      if (fromEnded && audio && instantUrl) {
-        audio.src = instantUrl;
-        audio.playbackRate = playbackSpeed;
+      // Fallback playable URL ensures audio keeps flowing synchronously with ZERO silence
+      const fallbackPlayable = instantUrl || track.audioUrl || track.previewUrl || '';
+
+      // When transitioning from an ended track, immediately set the source and trigger play() synchronously!
+      // This enables uninterrupted background and lockscreen autoplay on both Android Chrome and iOS Safari.
+      if (fromEnded && audio && fallbackPlayable) {
+        audio.src = fallbackPlayable;
+        audio.playbackRate = playbackSpeedRef.current || 1.0;
         audio.currentTime = 0;
-        audio.play().catch(() => {});
+        audio.play().catch((err) => {
+          console.warn('Sync play on ended transition failed:', err);
+        });
       }
 
       // Proactively pre-resolve the NEXT track in queue right now so it's ready ahead of time!
@@ -596,13 +635,17 @@ export function useAudioController(user = null, region = 'ID') {
 
         if (audio) {
           // If already playing this exact source (from synchronous fromEnded trigger), DO NOT re-assign audio.src!
-          // Re-assigning audio.src aborts ongoing playback in mobile Safari!
+          // Re-assigning audio.src aborts ongoing playback in mobile Safari & Android Chrome!
           if (audio.src !== finalUrl) {
             audio.src = finalUrl;
-            audio.playbackRate = playbackSpeed;
+            audio.playbackRate = playbackSpeedRef.current || 1.0;
             audio.currentTime = 0;
 
-            if (crossfadeDuration > 0) {
+            const curVol = volumeRef.current || 1.0;
+            const crossfade = crossfadeDurationRef.current || 0;
+
+            // Only run gradual fade-in when document is visible; in background/doze mode on Android, timers are throttled!
+            if (crossfade > 0 && !document.hidden) {
               audio.volume = 0;
               audio
                 .play()
@@ -615,10 +658,10 @@ export function useAudioController(user = null, region = 'ID') {
                   const timer = setInterval(() => {
                     step++;
                     if (audioRef.current && step <= totalSteps) {
-                      audioRef.current.volume = Math.min(volume, (step / totalSteps) * volume);
+                      audioRef.current.volume = Math.min(curVol, (step / totalSteps) * curVol);
                     } else {
                       clearInterval(timer);
-                      if (audioRef.current) audioRef.current.volume = volume;
+                      if (audioRef.current) audioRef.current.volume = curVol;
                     }
                   }, stepMs);
                 })
@@ -626,7 +669,7 @@ export function useAudioController(user = null, region = 'ID') {
                   console.warn('Playback requires user gesture or stream error:', err);
                 });
             } else {
-              audio.volume = volume;
+              audio.volume = curVol;
               audio
                 .play()
                 .then(() => {
@@ -637,7 +680,7 @@ export function useAudioController(user = null, region = 'ID') {
                 });
             }
           } else {
-            // Already set and playing smoothly
+            // Already set to finalUrl and playing smoothly
             setIsPlaying(true);
             setIsLoading(false);
           }
@@ -656,12 +699,16 @@ export function useAudioController(user = null, region = 'ID') {
   // Next Track with Smart Auto-Queue trigger (BUG 2 FIX: NEVER LOOP BACK TO START)
   const handleNextTrack = useCallback(
     (fromEnded = false) => {
-      if (!currentTrack) return;
-      const queue = playlistQueue.length > 0 ? playlistQueue : [currentTrack];
-      const currentIndex = queue.findIndex((t) => t.id === currentTrack.id);
+      const curTrack = currentTrackRef.current || currentTrack;
+      if (!curTrack) return;
+      const liveQueue = playlistQueueRef.current || playlistQueue;
+      const queue = liveQueue.length > 0 ? liveQueue : [curTrack];
+      const currentIndex = queue.findIndex((t) => t.id === curTrack.id);
+      const shuffle = isShuffleRef.current;
+      const repMode = repeatModeRef.current;
 
       // Shuffle mode
-      if (isShuffle) {
+      if (shuffle) {
         const remaining = queue.filter((t, idx) => idx > currentIndex);
         if (remaining.length > 0) {
           const next = remaining[Math.floor(Math.random() * remaining.length)];
@@ -669,13 +716,13 @@ export function useAudioController(user = null, region = 'ID') {
           if (remaining.length < 3) {
             triggerAutoQueue(next, false);
           }
-        } else if (repeatMode === 'all') {
+        } else if (repMode === 'all') {
           const randomTrack = queue[Math.floor(Math.random() * queue.length)];
           playTrack(randomTrack, undefined, fromEnded);
         } else {
           // End of shuffle queue without repeat: NEVER loop back to 0.
           // Trigger Infinite Radio and auto-play the next recommendation!
-          triggerAutoQueue(currentTrack, true);
+          triggerAutoQueue(curTrack, true);
         }
         return;
       }
@@ -689,17 +736,17 @@ export function useAudioController(user = null, region = 'ID') {
         if (queue.length - (currentIndex + 2) < 3) {
           triggerAutoQueue(nextSong, false);
         }
-      } else if (repeatMode === 'all' || (queue.length > 1 && !isShuffle)) {
+      } else if (repMode === 'all' || (queue.length > 1 && !shuffle)) {
         // User turned on repeat all, or reached end of playlist/album:
         // Seamlessly loop back to start so playlist never abruptly halts into silence!
         playTrack(queue[0], undefined, fromEnded);
       } else {
         // Reached end of queue without repeat! NEVER loop back to index 0.
         // Advance forward into newly fetched Auto-Play recommendations!
-        triggerAutoQueue(currentTrack, true);
+        triggerAutoQueue(curTrack, true);
       }
     },
-    [playlistQueue, currentTrack, isShuffle, repeatMode, playTrack, triggerAutoQueue]
+    [playlistQueue, currentTrack, playTrack, triggerAutoQueue]
   );
   handleNextTrackRef.current = handleNextTrack;
 
@@ -870,19 +917,22 @@ export function useAudioController(user = null, region = 'ID') {
     return `-${formatTime(remaining)}`;
   };
 
-  // Native Lockscreen Controls via MediaSession API
+  // Native Lockscreen Controls via MediaSession API (iOS & Android System Media Center)
   useEffect(() => {
     if (!('mediaSession' in navigator) || !currentTrack) return;
 
     try {
-      const artworkList = [];
-      if (currentTrack.cover) {
-        artworkList.push({
-          src: currentTrack.cover,
-          sizes: '512x512',
-          type: 'image/jpeg',
-        });
-      }
+      const coverUrl = currentTrack.cover || '';
+      const artworkList = coverUrl
+        ? [
+            { src: coverUrl, sizes: '96x96', type: 'image/jpeg' },
+            { src: coverUrl, sizes: '128x128', type: 'image/jpeg' },
+            { src: coverUrl, sizes: '192x192', type: 'image/jpeg' },
+            { src: coverUrl, sizes: '256x256', type: 'image/jpeg' },
+            { src: coverUrl, sizes: '384x384', type: 'image/jpeg' },
+            { src: coverUrl, sizes: '512x512', type: 'image/jpeg' },
+          ]
+        : [];
 
       navigator.mediaSession.metadata = new window.MediaMetadata({
         title: currentTrack.title || 'Unknown Track',
@@ -892,12 +942,22 @@ export function useAudioController(user = null, region = 'ID') {
       });
 
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+
+      if ('setPositionState' in navigator.mediaSession && duration > 0) {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: Math.max(0, duration),
+            playbackRate: playbackSpeedRef.current || 1.0,
+            position: Math.min(Math.max(0, currentTime || 0), duration),
+          });
+        } catch (e) {}
+      }
     } catch (e) {
       console.warn('MediaSession metadata error:', e);
     }
-  }, [currentTrack, isPlaying]);
+  }, [currentTrack, isPlaying, duration]);
 
-  // Persistent MediaSession action handlers (registered once on mount for iOS lockscreen resilience)
+  // Persistent MediaSession action handlers (registered once on mount for iOS & Android lockscreen resilience)
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
     try {
@@ -917,6 +977,22 @@ export function useAudioController(user = null, region = 'ID') {
         if (details.seekTime != null) {
           seekToRef.current?.(details.seekTime);
         }
+      });
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        const skip = details.seekOffset || 10;
+        const cur = audioRef.current?.currentTime || 0;
+        seekToRef.current?.(Math.max(0, cur - skip));
+      });
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        const skip = details.seekOffset || 10;
+        const cur = audioRef.current?.currentTime || 0;
+        const dur = audioRef.current?.duration || 0;
+        seekToRef.current?.(Math.min(dur, cur + skip));
+      });
+      navigator.mediaSession.setActionHandler('stop', () => {
+        isManualPauseRef.current = true;
+        audioRef.current?.pause();
+        setIsPlaying(false);
       });
     } catch (e) {
       console.warn('MediaSession handler registration error:', e);
