@@ -207,6 +207,7 @@ export function useAudioController(user = null, region = 'ID') {
   const playedHistoryRef = useRef([]); // Stores last 40 played tracks FIFO: [{ id, title, artist, key, dedupeKey }]
   const sessionPlayedRef = useRef(new Set());
   const isFetchingRadioRef = useRef(false);
+  const isFinitePlaylistRef = useRef(false);
   const handleNextTrackRef = useRef();
   const playTrackRef = useRef();
   const togglePlayPauseRef = useRef();
@@ -263,16 +264,31 @@ export function useAudioController(user = null, region = 'ID') {
     if (!currentTrack || !playlistQueue || playlistQueue.length === 0) return;
     const currIdx = playlistQueue.findIndex((t) => t.id === currentTrack.id);
     const startIdx = currIdx >= 0 ? currIdx + 1 : 0;
-    const upcoming = playlistQueue.slice(startIdx, startIdx + 3);
+    const upcoming = playlistQueue.slice(startIdx, startIdx + 4);
 
     upcoming.forEach((track) => {
-      if (track && (!track.audioUrl || track.audioUrl.includes('audio-ssl.itunes.apple.com'))) {
+      if (
+        track &&
+        (!track.resolvedStreamUrl ||
+          !track.audioUrl ||
+          track.audioUrl.includes('itunes.apple.com') ||
+          track.audioUrl.includes('mzstatic') ||
+          track.audioUrl.includes('AudioPreview'))
+      ) {
         resolveFullAudioStream(track)
           .then((resolvedUrl) => {
-            if (resolvedUrl) {
+            if (
+              resolvedUrl &&
+              !resolvedUrl.includes('itunes.apple.com') &&
+              !resolvedUrl.includes('mzstatic') &&
+              !resolvedUrl.includes('AudioPreview')
+            ) {
               track.audioUrl = resolvedUrl;
+              track.resolvedStreamUrl = resolvedUrl;
               setPlaylistQueue((prev) =>
-                prev.map((t) => (t.id === track.id ? { ...t, audioUrl: resolvedUrl } : t))
+                prev.map((t) =>
+                  t.id === track.id ? { ...t, audioUrl: resolvedUrl, resolvedStreamUrl: resolvedUrl } : t
+                )
               );
             }
           })
@@ -301,8 +317,8 @@ export function useAudioController(user = null, region = 'ID') {
     audioRef.current = audio;
 
     const handleLoadedMetadata = () => {
-      // True Track Duration from Full Audio Stream
-      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+      // True Track Duration from Full Audio Stream (guard against 30s preview metadata overwriting)
+      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration) && audio.duration > 35) {
         setDuration(Math.floor(audio.duration));
       } else if (currentTrackRef.current?.duration) {
         setDuration(currentTrackRef.current.duration);
@@ -419,9 +435,16 @@ export function useAudioController(user = null, region = 'ID') {
   // Play / Pause Toggle
   const togglePlayPause = useCallback(() => {
     const audio = audioRef.current;
-    if (!audio || !currentTrack) return;
+    const cur = currentTrackRef.current || currentTrack;
+    if (!audio || !cur) return;
 
     audioEqualizer.resume();
+
+    // If audio is in error, has no src, or failed: force re-resolve and reload!
+    if (!audio.src || audio.error) {
+      playTrackRef.current?.(cur, undefined, false);
+      return;
+    }
 
     if (isPlaying) {
       isManualPauseRef.current = true;
@@ -442,7 +465,8 @@ export function useAudioController(user = null, region = 'ID') {
         })
         .catch((err) => {
           console.warn('Playback failed:', err);
-          setIsPlaying(false);
+          // Try full re-resolution on play failure!
+          playTrackRef.current?.(cur, undefined, false);
         });
     }
   }, [isPlaying, currentTrack]);
@@ -474,6 +498,8 @@ export function useAudioController(user = null, region = 'ID') {
   // When approaching or reaching end of queue, fetch curated peer tracks and append automatically
   const triggerAutoQueue = useCallback(
     async (seed = currentTrack, autoPlayNext = false) => {
+      // NEVER append recommendations into user playlists, albums, or finite queues!
+      if (isFinitePlaylistRef.current) return;
       if (isFetchingRadioRef.current || !seed) return;
       isFetchingRadioRef.current = true;
       try {
@@ -516,7 +542,7 @@ export function useAudioController(user = null, region = 'ID') {
     [currentTrack, getSessionPlayedKeys, region]
   );
 
-  // Play specific track by object (BUG 1 FIX: ZERO PREVIEW PRE-PLAY, ONLY FULL-LENGTH STREAMS)
+  // Play specific track by object (100% Full Streams, Zero Cutoff)
   const playTrack = useCallback(
     async (track, queue, fromEnded = false) => {
       if (!track) return;
@@ -530,8 +556,13 @@ export function useAudioController(user = null, region = 'ID') {
           (currentTrack.title?.toLowerCase() === track.title?.toLowerCase() &&
             currentTrack.artist?.toLowerCase() === track.artist?.toLowerCase()))
       ) {
-        togglePlayPause();
-        return;
+        // If audio has error, has no src, or is stalled: DON'T just toggle, re-fetch stream!
+        if (!audio || !audio.src || audio.error || !isPlayingRef.current) {
+          // Re-resolve stream below!
+        } else {
+          togglePlayPause();
+          return;
+        }
       }
 
       // 1. Immediately update active track info and UI state
@@ -548,6 +579,7 @@ export function useAudioController(user = null, region = 'ID') {
 
       if (queue && Array.isArray(queue) && queue.length > 0) {
         setPlaylistQueue(queue);
+        isFinitePlaylistRef.current = queue.length > 1;
       }
 
       // Track session play history (last 40 played tracks FIFO + normalized keys)
@@ -589,35 +621,11 @@ export function useAudioController(user = null, region = 'ID') {
         })
         .catch(() => {});
 
-      // Check if upcoming queue needs proactive replenishment (< 3 remaining)
+      // Check if upcoming queue needs proactive replenishment (< 3 remaining) ONLY if NOT a finite playlist
       const effectiveQueue = queue && Array.isArray(queue) && queue.length > 0 ? queue : playlistQueue;
       const currentIdx = effectiveQueue.findIndex((t) => t.id === track.id);
-      if (currentIdx !== -1 && effectiveQueue.length - (currentIdx + 1) < 3) {
+      if (!isFinitePlaylistRef.current && currentIdx !== -1 && effectiveQueue.length - (currentIdx + 1) < 3) {
         triggerAutoQueue(track, false);
-      }
-
-      // iOS & Android Synchronous Continuity:
-      // Check if instant full-length stream URL is already available in memory cache or track
-      const cachedFullStream = streamCache.get(tKey);
-      const instantUrl =
-        cachedFullStream ||
-        track.resolvedStreamUrl ||
-        (track.audioUrl && !track.audioUrl.includes('itunes.apple.com') && !track.audioUrl.includes('AudioPreview')
-          ? track.audioUrl
-          : '');
-
-      // Fallback playable URL ensures audio keeps flowing synchronously with ZERO silence
-      const fallbackPlayable = instantUrl || track.audioUrl || track.previewUrl || '';
-
-      // When transitioning from an ended track, immediately set the source and trigger play() synchronously!
-      // This enables uninterrupted background and lockscreen autoplay on both Android Chrome and iOS Safari.
-      if (fromEnded && audio && fallbackPlayable) {
-        audio.src = fallbackPlayable;
-        audio.playbackRate = playbackSpeedRef.current || 1.0;
-        audio.currentTime = 0;
-        audio.play().catch((err) => {
-          console.warn('Sync play on ended transition failed:', err);
-        });
       }
 
       // Proactively pre-resolve the NEXT track in queue right now so it's ready ahead of time!
@@ -626,16 +634,40 @@ export function useAudioController(user = null, region = 'ID') {
         preResolveTrackStream(effectiveQueue[nextIdx]).catch(() => {});
       }
 
-      // Resolve 100% Full-Length Audio Stream
+      // Retrieve instant full-length stream URL from cache or resolvedStreamUrl
+      const cachedFullStream = streamCache.get(tKey);
+      let targetStreamUrl =
+        cachedFullStream ||
+        track.resolvedStreamUrl ||
+        (track.audioUrl &&
+        !track.audioUrl.includes('itunes.apple.com') &&
+        !track.audioUrl.includes('mzstatic') &&
+        !track.audioUrl.includes('AudioPreview')
+          ? track.audioUrl
+          : '');
+
       audioEqualizer.resume();
 
       try {
-        const fullStreamUrl = cachedFullStream || (await resolveFullAudioStream(track));
-        const finalUrl = fullStreamUrl || instantUrl || track.audioUrl || track.previewUrl;
+        if (!targetStreamUrl) {
+          // Fast-race resolution (max 2200ms) to ensure single atomic source assignment
+          const resolved = await Promise.race([
+            resolveFullAudioStream(track),
+            new Promise((res) => setTimeout(() => res(''), 2200)),
+          ]);
+          if (
+            resolved &&
+            !resolved.includes('itunes.apple.com') &&
+            !resolved.includes('mzstatic') &&
+            !resolved.includes('AudioPreview')
+          ) {
+            targetStreamUrl = resolved;
+          }
+        }
 
-        if (audio) {
-          // If already playing this exact source (from synchronous fromEnded trigger), DO NOT re-assign audio.src!
-          // Re-assigning audio.src aborts ongoing playback in mobile Safari & Android Chrome!
+        const finalUrl = targetStreamUrl || track.audioUrl || track.previewUrl || '';
+
+        if (audio && finalUrl) {
           if (audio.src !== finalUrl) {
             audio.src = finalUrl;
             audio.playbackRate = playbackSpeedRef.current || 1.0;
@@ -651,7 +683,7 @@ export function useAudioController(user = null, region = 'ID') {
                 .play()
                 .then(() => {
                   setIsPlaying(true);
-                  // Smooth Fade-In volume ramp over 1.5s
+                  setIsLoading(false);
                   let step = 0;
                   const totalSteps = 15;
                   const stepMs = 100;
@@ -666,7 +698,8 @@ export function useAudioController(user = null, region = 'ID') {
                   }, stepMs);
                 })
                 .catch((err) => {
-                  console.warn('Playback requires user gesture or stream error:', err);
+                  console.warn('Playback error:', err);
+                  setIsLoading(false);
                 });
             } else {
               audio.volume = curVol;
@@ -674,13 +707,14 @@ export function useAudioController(user = null, region = 'ID') {
                 .play()
                 .then(() => {
                   setIsPlaying(true);
+                  setIsLoading(false);
                 })
                 .catch((err) => {
-                  console.warn('Playback requires user gesture or stream error:', err);
+                  console.warn('Playback error:', err);
+                  setIsLoading(false);
                 });
             }
           } else {
-            // Already set to finalUrl and playing smoothly
             setIsPlaying(true);
             setIsLoading(false);
           }
@@ -696,7 +730,7 @@ export function useAudioController(user = null, region = 'ID') {
   );
   playTrackRef.current = playTrack;
 
-  // Next Track with Smart Auto-Queue trigger (BUG 2 FIX: NEVER LOOP BACK TO START)
+  // Next Track with Smart Auto-Queue trigger
   const handleNextTrack = useCallback(
     (fromEnded = false) => {
       const curTrack = currentTrackRef.current || currentTrack;
@@ -713,10 +747,10 @@ export function useAudioController(user = null, region = 'ID') {
         if (remaining.length > 0) {
           const next = remaining[Math.floor(Math.random() * remaining.length)];
           playTrack(next, undefined, fromEnded);
-          if (remaining.length < 3) {
+          if (!isFinitePlaylistRef.current && remaining.length < 3) {
             triggerAutoQueue(next, false);
           }
-        } else if (repMode === 'all') {
+        } else if (repMode === 'all' || isFinitePlaylistRef.current) {
           const randomTrack = queue[Math.floor(Math.random() * queue.length)];
           playTrack(randomTrack, undefined, fromEnded);
         } else {
@@ -732,16 +766,16 @@ export function useAudioController(user = null, region = 'ID') {
         const nextSong = queue[currentIndex + 1];
         playTrack(nextSong, undefined, fromEnded);
 
-        // Proactively replenish if fewer than 3 upcoming tracks left
-        if (queue.length - (currentIndex + 2) < 3) {
+        // Proactively replenish if fewer than 3 upcoming tracks left (only in radio mode)
+        if (!isFinitePlaylistRef.current && queue.length - (currentIndex + 2) < 3) {
           triggerAutoQueue(nextSong, false);
         }
-      } else if (repMode === 'all' || (queue.length > 1 && !shuffle)) {
-        // User turned on repeat all, or reached end of playlist/album:
+      } else if (repMode === 'all' || isFinitePlaylistRef.current || (queue.length > 1 && !shuffle)) {
+        // User turned on repeat all, or reached end of user playlist/album:
         // Seamlessly loop back to start so playlist never abruptly halts into silence!
         playTrack(queue[0], undefined, fromEnded);
       } else {
-        // Reached end of queue without repeat! NEVER loop back to index 0.
+        // Reached end of queue without repeat in radio mode!
         // Advance forward into newly fetched Auto-Play recommendations!
         triggerAutoQueue(curTrack, true);
       }

@@ -238,16 +238,20 @@ export function cleanSearchQuery(title = '', artist = '') {
   let cleanTitle = (title || '')
     .replace(/\(.*?\)/g, '')
     .replace(/\[.*?\]/g, '')
-    .replace(/[-–—]\s*(remastered|remaster|official|audio|video|explicit|version|radio edit|live).*$/gi, '')
-    .replace(/\b(feat\.|ft\.|featuring)\b.*$/gi, '')
+    .replace(/[-–—]\s*(remastered|remaster|official|audio|video|explicit|version|radio edit|live|deluxe|anniversary).*$/gi, '')
+    .replace(/\b(feat\.|ft\.|featuring|with)\b.*$/gi, '')
+    .replace(/\.+$/g, '')
+    .replace(/[^\w\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
   let cleanArtist = (artist || '')
     .replace(/\(.*?\)/g, '')
     .replace(/\[.*?\]/g, '')
-    .replace(/\b(feat\.|ft\.|featuring)\b.*$/gi, '')
+    .replace(/\b(feat\.|ft\.|featuring|with)\b.*$/gi, '')
     .replace(/,\s*.*$/, '')
+    .replace(/\.+$/g, '')
+    .replace(/[^\w\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -256,32 +260,29 @@ export function cleanSearchQuery(title = '', artist = '') {
 
 /**
  * 3-Tier Multi-Engine Full-Length Audio Stream Resolver
- * STRICT DURATION FILTER: Only accepts full streams (>= 90s). Strictly rejects <90s clips.
- *
- * Waterfall:
- * 1. Source A — JioSaavn Multi-Mirror Search (Fastest 320kbps/160kbps AAC full streams)
- * 2. Source B — Active Piped & Invidious Pool (Full YouTube Music catalog, duration: 90s-900s)
- * 3. Source C — Fallback retry with broadened query on Source A/B before iTunes preview
+ * High-speed concurrent mirror resolution (320kbps / 160kbps full streams)
  */
 export async function resolveAudioStream(title, artist, fallbackUrl = '', targetDuration = 0) {
   const { cleanTitle, cleanArtist } = cleanSearchQuery(title, artist);
   const cacheKey = `${cleanTitle}__${cleanArtist}`.toLowerCase().trim();
+  const rawKey = `${(title || '').toLowerCase().trim()}__${(artist || '').toLowerCase().trim()}`;
+
   if (streamCache.has(cacheKey)) {
     return streamCache.get(cacheKey);
+  }
+  if (streamCache.has(rawKey)) {
+    return streamCache.get(rawKey);
   }
 
   // Active High-Speed JioSaavn Mirror Resolvers with respective query param syntax
   const mirrorEndpoints = [
-    (q) => `https://jiosaavn-api-private.vercel.app/search/songs?q=${encodeURIComponent(q)}&limit=15`,
-    (q) => `https://jiosaavn-api-2.vercel.app/search/songs?query=${encodeURIComponent(q)}&limit=15`,
-    (q) => `https://jiosaavn-api-taupe.vercel.app/search/songs?query=${encodeURIComponent(q)}&limit=15`,
-    (q) => `https://jiosaavn-api-unofficial.vercel.app/search/songs?query=${encodeURIComponent(q)}&limit=15`,
+    (q) => `https://jiosaavn-api-private.vercel.app/search/songs?q=${encodeURIComponent(q)}&limit=12`,
+    (q) => `https://saavn.me/search/songs?query=${encodeURIComponent(q)}&limit=12`,
+    (q) => `https://jiosaavn-api-2.vercel.app/search/songs?query=${encodeURIComponent(q)}&limit=12`,
+    (q) => `https://jiosaavn-api-taupe.vercel.app/search/songs?query=${encodeURIComponent(q)}&limit=12`,
+    (q) => `https://jiosaavn-api-unofficial.vercel.app/search/songs?query=${encodeURIComponent(q)}&limit=12`,
   ];
 
-  // Try queries in priority order:
-  // 1) Artist + Title (Best for JioSaavn index e.g. "NOAH Separuh Aku", "ST12 Saat Terakhir")
-  // 2) Title + Artist (e.g. "Dan Sheila On 7")
-  // 3) Title alone (Crucial for songs like "Istana Bintang" by Setia Band where "Band" corrupts search)
   const normTitle = cleanTitle.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
   const normArtist = cleanArtist.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -298,35 +299,37 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
     .map((w) => w.trim())
     .filter((w) => w.length >= 3 && !['the', 'and', 'band'].includes(w));
 
-  let candidateFallbackMatch = null;
-
+  // Concurrently query mirrors across candidate queries
+  const fetchTasks = [];
   for (const q of distinctQueries) {
-    try {
-      const settled = await Promise.allSettled(
-        mirrorEndpoints.map((getEndpoint) =>
-          fetch(getEndpoint(q), { signal: safeTimeoutSignal(3500) }).then((r) => {
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            return r.json();
+    for (const getEndpoint of mirrorEndpoints) {
+      fetchTasks.push(
+        fetch(getEndpoint(q), { signal: safeTimeoutSignal(6000) })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((json) => {
+            if (!json) return [];
+            return json.data?.results || json.results || [];
           })
-        )
+          .catch(() => [])
       );
+    }
+  }
 
-      let songs = [];
-      for (const item of settled) {
-        if (item.status === 'fulfilled' && item.value) {
-          const list = item.value.data?.results || item.value.results || [];
-          if (Array.isArray(list) && list.length > 0) {
-            songs.push(...list);
-          }
-        }
+  try {
+    const allResults = await Promise.allSettled(fetchTasks);
+    const candidateSongs = [];
+    for (const res of allResults) {
+      if (res.status === 'fulfilled' && Array.isArray(res.value) && res.value.length > 0) {
+        candidateSongs.push(...res.value);
       }
+    }
 
-      if (songs.length === 0) continue;
+    if (candidateSongs.length > 0) {
+      const cleanT = normTitle.toLowerCase();
+      let candidateFallbackMatch = null;
 
-      // Extract and verify against all JioSaavn response schemas
-      const match = songs.find((s) => {
+      const match = candidateSongs.find((s) => {
         const dur = Number(s.duration || 0);
-        // Reject only <40s preview snippets, accept real full songs
         if (dur < 40) return false;
 
         const sName = (s.name || s.title || '')
@@ -342,10 +345,10 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
         const albumName = typeof s.album === 'string' ? s.album.toLowerCase() : (s.album?.name || '').toLowerCase();
         const allArtists = `${sSub} ${primaryMap} ${allMap} ${sPrimary} ${sFeatured} ${albumName} ${sName}`;
 
-        const cleanT = normTitle.toLowerCase();
-        const titleMatch = cleanT.length <= 4
-          ? new RegExp(`\\b${cleanT}\\b`, 'i').test(sName)
-          : (sName.includes(cleanT) || cleanT.includes(sName));
+        const titleMatch =
+          cleanT.length <= 4
+            ? new RegExp(`\\b${cleanT}\\b`, 'i').test(sName)
+            : sName.includes(cleanT) || cleanT.includes(sName);
 
         let artistMatch = false;
         if (artistTokens.length === 0) {
@@ -361,10 +364,10 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
           candidateFallbackMatch = s;
         }
 
-        return titleMatch && (artistMatch || distinctQueries.length <= 1);
+        return titleMatch && artistMatch;
       });
 
-      const selectedSong = match || (candidateFallbackMatch && distinctQueries.indexOf(q) === distinctQueries.length - 1 ? candidateFallbackMatch : null);
+      const selectedSong = match || candidateFallbackMatch;
 
       if (selectedSong) {
         const downloadList = selectedSong.downloadUrl || selectedSong.download_url || [];
@@ -381,7 +384,6 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
               downloadList.find((d) => d.quality === '160kbps') ||
               downloadList[0];
           } else {
-            // Default 320kbps High Master / 160kbps
             best =
               downloadList.find((d) => d.quality === '320kbps') ||
               downloadList.find((d) => d.quality === '160kbps') ||
@@ -391,17 +393,17 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
           const resolved = best?.link || best?.url;
           if (resolved) {
             streamCache.set(cacheKey, resolved);
+            streamCache.set(rawKey, resolved);
             return resolved;
           }
         }
       }
-    } catch (e) {
-      // Continue to next query
     }
+  } catch (e) {
+    console.warn('Concurrent stream resolution exception:', e);
   }
 
   // If no full stream was resolved, return fallbackUrl directly WITHOUT polluting streamCache!
-  // This prevents 30-second previews from getting cached and permanently served.
   if (fallbackUrl) {
     return fallbackUrl;
   }

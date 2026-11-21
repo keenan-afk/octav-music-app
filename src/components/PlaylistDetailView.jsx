@@ -115,7 +115,7 @@ export function PlaylistDetailView({
       onTogglePlayPause();
     } else {
       const targetIndex = isShuffle ? Math.floor(Math.random() * tracks.length) : 0;
-      onSelectTrack(tracks[targetIndex]);
+      onSelectTrack(tracks[targetIndex], tracks);
     }
   };
 
