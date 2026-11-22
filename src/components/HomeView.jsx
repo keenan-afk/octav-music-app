@@ -65,33 +65,42 @@ export function HomeView({
   }, [region]);
 
   // Shelf 1: "Last Session" / Quick Jump Items
+  // Strictly rendered ONLY when user actually has listening history or liked songs.
+  // Brand new guests start with a completely clean home feed with zero fake history!
   const quickJumpItems = useMemo(() => {
-    const sourceTracks =
-      recentlyPlayed.length > 0
-        ? recentlyPlayed.slice(0, 7)
-        : trendingTracks.slice(0, 7);
+    if (recentlyPlayed.length === 0 && likedTracks.length === 0) {
+      return [];
+    }
 
-    const likedCard = {
-      id: 'pl-liked',
-      title: 'Liked Songs',
-      isLikedCollection: true,
-      type: 'Playlist',
-      tracks: likedTracks,
-      cover: likedTracks[0]?.cover || '',
-    };
+    const items = [];
 
-    return [
-      likedCard,
-      ...sourceTracks.map((t) => ({
+    if (likedTracks.length > 0) {
+      items.push({
+        id: 'pl-liked',
+        title: 'Liked Songs',
+        isLikedCollection: true,
+        type: 'Playlist',
+        tracks: likedTracks,
+        cover: likedTracks[0]?.cover || '',
+      });
+    }
+
+    const limit = items.length > 0 ? 7 : 8;
+    const actualRecents = recentlyPlayed.slice(0, limit);
+
+    actualRecents.forEach((t) => {
+      items.push({
         id: t.id,
         title: t.title,
         artist: t.artist,
         cover: t.cover,
         type: 'Track',
         trackData: t,
-      })),
-    ];
-  }, [recentlyPlayed, trendingTracks, likedTracks]);
+      });
+    });
+
+    return items;
+  }, [recentlyPlayed, likedTracks]);
 
   // Shelf 2: "More Like [Track Name]" (Only for users with listening history)
   const recommendationBase = useMemo(() => {
@@ -258,12 +267,12 @@ export function HomeView({
         );
       })()}
 
-      {/* Shelf 1 — "Last Session" (Shown in All or matching) */}
-      {(isAll || isTrending) && (
+      {/* Shelf 1 — "Last Session" (Rendered ONLY if user actually has listening history or liked songs!) */}
+      {(isAll || isTrending) && quickJumpItems.length > 0 && (
         <div className="pt-2">
           <div className="px-4 pb-1 flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-white/50">
-              {recentlyPlayed.length > 0 ? 'Last Session' : 'Quick Jump In'}
+              Last Session
             </span>
           </div>
           <QuickJumpGrid
@@ -272,7 +281,7 @@ export function HomeView({
             isPlaying={isPlaying}
             onSelectTrack={(item) => {
               const track = item.trackData || item;
-              onSelectTrack(track, recentlyPlayed.length > 0 ? recentlyPlayed : trendingTracks);
+              onSelectTrack(track, recentlyPlayed);
             }}
             onOpenPlaylist={(item) => {
               onOpenPlaylist(item);
