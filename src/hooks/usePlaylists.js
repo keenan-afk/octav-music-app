@@ -59,7 +59,7 @@ export function usePlaylists(user = null) {
 
       try {
         let cloudPlaylists = user.cloudLibrary?.customPlaylists || null;
-        if (!cloudPlaylists && user.isSupabase) {
+        if (user.isSupabase) {
           const cloudData = await fetchUserDataFromCloud();
           if (cloudData?.customPlaylists) {
             cloudPlaylists = cloudData.customPlaylists;

@@ -76,12 +76,12 @@ export function ArtistDiscographySheet({
 
   // Fetch artist discography when artist changes
   useEffect(() => {
-    if (!artist?.id || !isOpen) return;
+    if (!artist || !isOpen) return;
 
     let isMounted = true;
     setIsLoading(true);
 
-    fetchArtistDiscography(artist.id, region)
+    fetchArtistDiscography(artist, region)
       .then((data) => {
         if (isMounted) {
           setTracks(data.tracks || []);
@@ -95,7 +95,7 @@ export function ArtistDiscographySheet({
     return () => {
       isMounted = false;
     };
-  }, [artist?.id, isOpen, region]);
+  }, [artist, isOpen, region]);
 
   if (!artist && !isOpen) return null;
 

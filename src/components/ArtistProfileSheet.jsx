@@ -60,6 +60,13 @@ export function ArtistProfileSheet({
   const artistName = typeof artist === 'object' ? (artist?.name || artist?.title || '') : (artist || '');
   const isFollowing = followedArtists.includes(artistName);
 
+  // Sync followed artists when cloud profile hydrates
+  useEffect(() => {
+    if (Array.isArray(user?.cloudLibrary?.followedArtists)) {
+      setFollowedArtists(user.cloudLibrary.followedArtists);
+    }
+  }, [user?.cloudLibrary?.followedArtists]);
+
   // Persist followed artists locally and sync to Supabase Cloud
   const toggleFollow = useCallback(() => {
     if (!artistName) return;

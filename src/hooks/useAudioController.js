@@ -98,7 +98,7 @@ export function useAudioController(user = null, region = 'ID') {
 
       try {
         let cloudLiked = user.cloudLibrary?.likedTracks || null;
-        if (!cloudLiked && user.isSupabase) {
+        if (user.isSupabase) {
           const cloudData = await fetchUserDataFromCloud();
           if (cloudData?.likedTracks) {
             cloudLiked = cloudData.likedTracks;
@@ -385,6 +385,11 @@ export function useAudioController(user = null, region = 'ID') {
         audio.currentTime = 0;
         audio.play().catch(() => {});
       } else {
+        // Keep mobile audio session active on iOS Safari & Android Chrome while resolving next track
+        try {
+          audio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+          audio.play().catch(() => {});
+        } catch (e) {}
         handleNextTrackRef.current?.(true);
       }
     };
@@ -667,6 +672,41 @@ export function useAudioController(user = null, region = 'ID') {
         }
 
         const finalUrl = targetStreamUrl || track.audioUrl || track.previewUrl || '';
+        const isPreviewStream =
+          !targetStreamUrl ||
+          finalUrl.includes('AudioPreview') ||
+          finalUrl.includes('mzstatic') ||
+          finalUrl.includes('itunes.apple.com');
+
+        // Seamless Hot-Swap: If preview started because network was slow, automatically upgrade
+        // to full 320k stream the moment resolution finishes without interrupting playback!
+        if (isPreviewStream) {
+          resolveFullAudioStream(track)
+            .then((fullUrl) => {
+              if (
+                fullUrl &&
+                !fullUrl.includes('AudioPreview') &&
+                !fullUrl.includes('mzstatic') &&
+                !fullUrl.includes('itunes.apple.com') &&
+                currentTrackRef.current?.id === track.id
+              ) {
+                const currentAudio = audioRef.current;
+                if (
+                  currentAudio &&
+                  (currentAudio.src.includes('AudioPreview') ||
+                    currentAudio.src.includes('mzstatic') ||
+                    currentAudio.src.includes('itunes.apple.com'))
+                ) {
+                  const savedTime = currentAudio.currentTime;
+                  currentAudio.src = fullUrl;
+                  currentAudio.currentTime = savedTime;
+                  currentAudio.play().catch(() => {});
+                  setCurrentTrack((prev) => (prev?.id === track.id ? { ...prev, audioUrl: fullUrl } : prev));
+                }
+              }
+            })
+            .catch(() => {});
+        }
 
         if (audio && finalUrl) {
           if (audio.src !== finalUrl) {
