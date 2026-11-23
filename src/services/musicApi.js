@@ -59,12 +59,29 @@ function formatDuration(seconds) {
   return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 }
 
+export const KNOWN_COVER_ARTISTS = [
+  'felix irwan',
+  'tami aulia',
+  'adlani rambe',
+  'mitty zasia',
+  'aviwkila',
+  'chintya gabriella',
+  'remember entertainment',
+  'genjreng guitar',
+  '3 pemuda berbahaya',
+  'akbar chalay',
+  'michela thea',
+  'fiersa besari cover',
+];
+
 /**
- * Filter out compilations, karaoke, tributes, and loopable sound effects
+ * Filter out compilations, karaoke, tributes, covers, and loopable sound effects / nature sounds
  */
-export function isCompilationOrKaraoke(title = '', artist = '') {
+export function isCompilationOrKaraoke(title = '', artist = '', album = '') {
   const lowTitle = (title || '').toLowerCase();
   const lowArtist = (artist || '').toLowerCase();
+  const lowAlbum = (album || '').toLowerCase();
+  const text = `${lowTitle} ${lowArtist} ${lowAlbum}`;
 
   const bannedKeywords = [
     'karaoke',
@@ -73,15 +90,31 @@ export function isCompilationOrKaraoke(title = '', artist = '') {
     'relaxing rain',
     'rain sounds',
     'sound effects',
+    'sound effect',
+    'suara alam',
     'instrumental version',
     'backing track',
     'various artists',
     'the karaoke channel',
     'ringtone',
+    'white noise',
+    'sleep sounds',
+    'sleep music',
+    'nature sounds',
+    'ambient noise',
+    'meditation',
+    'asmr',
+    'lullaby',
+    'guitar cover',
+    'piano cover',
+    'acoustic cover',
+    'cover version',
+    'coverin terus',
+    'keroncong version',
   ];
 
   if (lowArtist === 'various' || lowArtist === 'various artists') return true;
-  return bannedKeywords.some((k) => lowTitle.includes(k) || lowArtist.includes(k));
+  return bannedKeywords.some((k) => text.includes(k));
 }
 
 /**
@@ -326,7 +359,6 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
 
     if (candidateSongs.length > 0) {
       const cleanT = normTitle.toLowerCase();
-      let candidateFallbackMatch = null;
 
       const match = candidateSongs.find((s) => {
         const dur = Number(s.duration || 0);
@@ -345,6 +377,9 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
         const albumName = typeof s.album === 'string' ? s.album.toLowerCase() : (s.album?.name || '').toLowerCase();
         const allArtists = `${sSub} ${primaryMap} ${allMap} ${sPrimary} ${sFeatured} ${albumName} ${sName}`;
 
+        // Strictly reject sound effects, nature sounds, ambient noise, karaoke, or acoustic cover albums
+        if (isCompilationOrKaraoke(sName, allArtists, albumName)) return false;
+
         const titleMatch =
           cleanT.length <= 4
             ? new RegExp(`\\b${cleanT}\\b`, 'i').test(sName)
@@ -360,14 +395,10 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
             isArtistStrictMatch(sPrimary, normArtist);
         }
 
-        if (titleMatch && !candidateFallbackMatch) {
-          candidateFallbackMatch = s;
-        }
-
         return titleMatch && artistMatch;
       });
 
-      const selectedSong = match || candidateFallbackMatch;
+      const selectedSong = match;
 
       if (selectedSong) {
         const downloadList = selectedSong.downloadUrl || selectedSong.download_url || [];
@@ -673,7 +704,7 @@ export async function searchMusic(rawQuery, region = 'ID') {
 
   // Parse and filter songs
   const filteredSongs = rawSongs.filter(
-    (item) => !isCompilationOrKaraoke(item.trackName, item.artistName)
+    (item) => !isCompilationOrKaraoke(item.trackName, item.artistName, item.collectionName)
   );
   let songsToUse = filteredSongs.length > 0 ? filteredSongs : rawSongs;
 
@@ -696,7 +727,7 @@ export async function searchMusic(rawQuery, region = 'ID') {
       ]);
       if (fbRes.results && fbRes.results.length > 0) {
         songsToUse = fbRes.results.filter(
-          (item) => !isCompilationOrKaraoke(item.trackName, item.artistName)
+          (item) => !isCompilationOrKaraoke(item.trackName, item.artistName, item.collectionName)
         );
       }
       if (rawArtists.length === 0 && fbArtistRes.results && fbArtistRes.results.length > 0) {
@@ -720,12 +751,20 @@ export async function searchMusic(rawQuery, region = 'ID') {
     const bTitle = (b.trackName || '').toLowerCase();
     const aArtist = (a.artistName || '').toLowerCase();
     const bArtist = (b.artistName || '').toLowerCase();
+    const aAlbum = (a.collectionName || '').toLowerCase();
+    const bAlbum = (b.collectionName || '').toLowerCase();
 
     // Clean titles for punctuation-insensitive matching (e.g. "Dan..." vs "Dan")
     const cleanATitle = aTitle.replace(/[^\w\s]/g, '').trim();
     const cleanBTitle = bTitle.replace(/[^\w\s]/g, '').trim();
     const cleanAArtist = aArtist.replace(/[^\w\s]/g, '').trim();
     const cleanBArtist = bArtist.replace(/[^\w\s]/g, '').trim();
+
+    // Deprioritize known indie cover artists below official original artists
+    const aIsCover = KNOWN_COVER_ARTISTS.some((ca) => aArtist.includes(ca)) || aTitle.includes('cover') || aAlbum.includes('cover');
+    const bIsCover = KNOWN_COVER_ARTISTS.some((ca) => bArtist.includes(ca)) || bTitle.includes('cover') || bAlbum.includes('cover');
+    if (!aIsCover && bIsCover) return -1;
+    if (aIsCover && !bIsCover) return 1;
 
     const aArtistExact = aArtist === lowQuery || cleanAArtist === lowQuery;
     const bArtistExact = bArtist === lowQuery || cleanBArtist === lowQuery;
@@ -778,7 +817,31 @@ export async function searchMusic(rawQuery, region = 'ID') {
     return 0;
   });
 
-  const parsedTracks = rankedSongs.map((item) => {
+  // Deduplicate songs by normalized (cleanTitle + cleanArtist)
+  // Keeps only the canonical studio album release, completely eliminating duplicate cards with different covers
+  const seenTracks = new Set();
+  const deduplicatedSongs = [];
+  for (const item of rankedSongs) {
+    const cleanT = (item.trackName || '')
+      .toLowerCase()
+      .replace(/\(.*?\)/g, '')
+      .replace(/\[.*?\]/g, '')
+      .replace(/[-–—].*$/, '')
+      .replace(/[^\w\s]/g, '')
+      .trim();
+    const cleanA = (item.artistName || '')
+      .toLowerCase()
+      .replace(/\(.*?\)/g, '')
+      .replace(/[^\w\s]/g, '')
+      .trim();
+    const dedupeKey = `${cleanT}__${cleanA}`;
+    if (!seenTracks.has(dedupeKey)) {
+      seenTracks.add(dedupeKey);
+      deduplicatedSongs.push(item);
+    }
+  }
+
+  const parsedTracks = deduplicatedSongs.map((item) => {
     const durationSec = Math.round((item.trackTimeMillis || 210000) / 1000);
     const cover = (item.artworkUrl100 || '')
       .replace('100x100bb.jpg', '600x600bb.jpg')

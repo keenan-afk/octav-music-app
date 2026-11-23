@@ -650,10 +650,11 @@ export function useAudioController(user = null, region = 'ID') {
 
       try {
         if (!targetStreamUrl) {
-          // Fast-race resolution (max 2200ms) to ensure single atomic source assignment
+          // Generous race timeout: allow 7000ms on user click (never prematurely cut to 30s preview), 3500ms on background transition
+          const timeoutMs = fromEnded ? 3500 : 7000;
           const resolved = await Promise.race([
             resolveFullAudioStream(track),
-            new Promise((res) => setTimeout(() => res(''), 2200)),
+            new Promise((res) => setTimeout(() => res(''), timeoutMs)),
           ]);
           if (
             resolved &&
