@@ -54,7 +54,7 @@ export function MiniPlayerIsland({
 
   return (
     <div
-      className="absolute inset-x-2 z-40 select-none pointer-events-auto"
+      className="absolute inset-x-3 z-40 select-none pointer-events-auto"
       style={{ bottom: 'calc(max(0.75rem, env(safe-area-inset-bottom)) + 72px)' }}
     >
       <LiquidSurface

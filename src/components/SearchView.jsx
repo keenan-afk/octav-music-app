@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Search as SearchIcon,
   X,
-  Mic,
-  Camera,
   Play,
   Heart,
   Loader2,
@@ -144,7 +142,8 @@ export function SearchView({
       <div className="sticky top-0 z-20 pb-3 bg-[#050507]/40 backdrop-blur-md -mx-4 px-4 pt-1">
         <LiquidSurface
           rounded="rounded-2xl"
-          className="h-12 flex items-center px-3.5 gap-2.5"
+          className="w-full h-12"
+          contentClassName="w-full h-full flex items-center px-4 gap-3"
           style={{
             background:
               'linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%)',
@@ -165,27 +164,23 @@ export function SearchView({
             placeholder={
               region === 'ID'
                 ? 'Sheila On 7, Dan, Dewa 19, Noah...'
-                : 'Artists, songs, or podcasts...'
+                : 'Artists, songs, or albums...'
             }
-            className="flex-1 bg-transparent border-none outline-none text-sm font-semibold text-white placeholder-white/40 tracking-tight"
+            className="w-full min-w-0 flex-1 bg-transparent border-none outline-none text-sm font-semibold text-white placeholder-white/40 tracking-tight"
             autoFocus={false}
           />
 
-          {searchTerm ? (
+          {searchTerm && (
             <button
               onClick={() => {
                 setSearchTerm('');
                 setDebouncedQuery('');
               }}
-              className="p-1 text-white/60 hover:text-white active:scale-90 transition-transform cursor-pointer"
+              className="p-1.5 -mr-1 rounded-full text-white/60 hover:text-white hover:bg-white/10 active:scale-90 transition-all cursor-pointer flex-shrink-0"
+              title="Clear search"
             >
               <X className="w-4 h-4" />
             </button>
-          ) : (
-            <div className="flex items-center gap-2 text-white/50">
-              <Camera className="w-4 h-4 cursor-pointer hover:text-white" />
-              <Mic className="w-4 h-4 cursor-pointer hover:text-white" />
-            </div>
           )}
         </LiquidSurface>
       </div>

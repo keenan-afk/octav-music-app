@@ -441,7 +441,7 @@ export function ArtistProfileSheet({
         {/* About the Artist Bio Card */}
         {artistData && (
           <div className="px-4 mt-8">
-            <LiquidSurface className="p-5 rounded-3xl border border-white/10 flex flex-col gap-3">
+            <LiquidSurface rounded="rounded-3xl" className="border border-white/10" contentClassName="p-5 flex flex-col gap-3">
               <span className="text-xs font-extrabold uppercase tracking-wider text-white">
                 About the Artist
               </span>

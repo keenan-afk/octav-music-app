@@ -338,8 +338,8 @@ export function App() {
           }}
         />
 
-        {/* iOS Home Indicator Bar */}
-        <div className="relative z-40 pb-2 flex items-center justify-center pointer-events-none">
+        {/* iOS Home Indicator Bar (desktop device bezel preview only) */}
+        <div className="hidden sm:flex relative z-40 pb-2 items-center justify-center pointer-events-none">
           <div className="w-32 h-1 bg-white/30 rounded-full" />
         </div>
 

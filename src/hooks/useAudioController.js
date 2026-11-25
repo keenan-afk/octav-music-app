@@ -87,7 +87,7 @@ export function useAudioController(user = null, region = 'ID') {
         const parsed = JSON.parse(savedRecent);
         if (Array.isArray(parsed)) setRecentlyPlayed(parsed);
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // Cloud hydration for liked tracks across devices
     async function hydrateLikedFromCloud() {
@@ -117,7 +117,7 @@ export function useAudioController(user = null, region = 'ID') {
           setLikedTracks(merged);
           try {
             localStorage.setItem(lKey, JSON.stringify(merged));
-          } catch {}
+          } catch { }
         }
       } catch (err) {
         console.warn('Liked tracks cloud hydration note:', err);
@@ -166,6 +166,7 @@ export function useAudioController(user = null, region = 'ID') {
   const [isolatorMode, setIsolatorModeState] = useState('normal');
 
   const audioRef = useRef(null);
+  const prefetchAudioRef = useRef(null);
   const loopRef = useRef({ loopA, loopB, isLooping });
   loopRef.current = { loopA, loopB, isLooping };
 
@@ -259,43 +260,67 @@ export function useAudioController(user = null, region = 'ID') {
   const likedTrackIds = new Set(likedTracks.map((t) => t.id));
   const isLiked = currentTrack ? likedTrackIds.has(currentTrack.id) : false;
 
-  // Ahead-of-time stream pre-resolution for upcoming tracks in queue (Zero stutter, instant iOS transition)
+  // Ahead-of-time stream & HTTP audio buffer pre-resolution for upcoming tracks (instant screen-off transition)
   useEffect(() => {
     if (!currentTrack || !playlistQueue || playlistQueue.length === 0) return;
     const currIdx = playlistQueue.findIndex((t) => t.id === currentTrack.id);
     const startIdx = currIdx >= 0 ? currIdx + 1 : 0;
-    const upcoming = playlistQueue.slice(startIdx, startIdx + 4);
+    const sequentialUpcoming = playlistQueue.slice(startIdx, startIdx + 4);
+    // Include loop-back track[0] if nearing end of finite playlist
+    if (currIdx >= 0 && currIdx === playlistQueue.length - 1 && playlistQueue.length > 1) {
+      sequentialUpcoming.push(playlistQueue[0]);
+    }
+    const shuffleUpcoming = isShuffle
+      ? playlistQueue.filter((t, i) => i > currIdx).slice(0, 4)
+      : [];
+    const upcoming = Array.from(new Set([...sequentialUpcoming, ...shuffleUpcoming]));
 
-    upcoming.forEach((track) => {
-      if (
-        track &&
-        (!track.resolvedStreamUrl ||
-          !track.audioUrl ||
-          track.audioUrl.includes('itunes.apple.com') ||
-          track.audioUrl.includes('mzstatic') ||
-          track.audioUrl.includes('AudioPreview'))
-      ) {
-        resolveFullAudioStream(track)
-          .then((resolvedUrl) => {
-            if (
-              resolvedUrl &&
-              !resolvedUrl.includes('itunes.apple.com') &&
-              !resolvedUrl.includes('mzstatic') &&
-              !resolvedUrl.includes('AudioPreview')
-            ) {
-              track.audioUrl = resolvedUrl;
-              track.resolvedStreamUrl = resolvedUrl;
-              setPlaylistQueue((prev) =>
-                prev.map((t) =>
-                  t.id === track.id ? { ...t, audioUrl: resolvedUrl, resolvedStreamUrl: resolvedUrl } : t
-                )
-              );
-            }
-          })
-          .catch(() => {});
+    upcoming.forEach((track, idx) => {
+      if (!track) return;
+      const hasFullUrl =
+        track.resolvedStreamUrl ||
+        (track.audioUrl &&
+          !track.audioUrl.includes('itunes.apple.com') &&
+          !track.audioUrl.includes('mzstatic') &&
+          !track.audioUrl.includes('AudioPreview'));
+
+      if (hasFullUrl) {
+        const url = track.resolvedStreamUrl || track.audioUrl;
+        if (idx === 0 && prefetchAudioRef.current && prefetchAudioRef.current.src !== url) {
+          prefetchAudioRef.current.src = url;
+          try {
+            prefetchAudioRef.current.load();
+          } catch {}
+        }
+        return;
       }
+
+      resolveFullAudioStream(track)
+        .then((resolvedUrl) => {
+          if (
+            resolvedUrl &&
+            !resolvedUrl.includes('itunes.apple.com') &&
+            !resolvedUrl.includes('mzstatic') &&
+            !resolvedUrl.includes('AudioPreview')
+          ) {
+            track.audioUrl = resolvedUrl;
+            track.resolvedStreamUrl = resolvedUrl;
+            if (idx === 0 && prefetchAudioRef.current && prefetchAudioRef.current.src !== resolvedUrl) {
+              prefetchAudioRef.current.src = resolvedUrl;
+              try {
+                prefetchAudioRef.current.load();
+              } catch {}
+            }
+            setPlaylistQueue((prev) =>
+              prev.map((t) =>
+                t.id === track.id ? { ...t, audioUrl: resolvedUrl, resolvedStreamUrl: resolvedUrl } : t
+              )
+            );
+          }
+        })
+        .catch(() => { });
     });
-  }, [currentTrack?.id, playlistQueue.length]);
+  }, [currentTrack?.id, playlistQueue.length, isShuffle]);
 
   // Initialize HTML5 Audio Element
   useEffect(() => {
@@ -313,6 +338,11 @@ export function useAudioController(user = null, region = 'ID') {
     audio.playsInline = true;
     audio.setAttribute('playsinline', 'true');
     audio.setAttribute('webkit-playsinline', 'true');
+
+    // Passive secondary prefetcher to cache upcoming audio bytes without claiming audio focus
+    const prefetchAudio = new Audio();
+    prefetchAudio.preload = 'auto';
+    prefetchAudioRef.current = prefetchAudio;
 
     audioRef.current = audio;
 
@@ -333,12 +363,19 @@ export function useAudioController(user = null, region = 'ID') {
             playbackRate: audio.playbackRate || 1.0,
             position: Math.min(Math.max(0, audio.currentTime || 0), audio.duration),
           });
-        } catch (e) {}
+        } catch (e) { }
       }
     };
 
     const handleWaiting = () => setIsLoading(true);
     const handleCanPlay = () => setIsLoading(false);
+    const handlePlaying = () => {
+      setIsPlaying(true);
+      setIsLoading(false);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
+    };
 
     // Direct native timeupdate handler
     const handleTimeUpdate = () => {
@@ -366,15 +403,35 @@ export function useAudioController(user = null, region = 'ID') {
           } else {
             audio.volume = curVol;
           }
+        } else if (document.hidden && audio.volume !== curVol) {
+          audio.volume = curVol;
         }
 
-        // Proactively pre-resolve upcoming track in the queue when nearing end (<30s)
-        if (audio.duration > 35 && audio.duration - cur < 30) {
+        // Proactively pre-resolve & pre-buffer upcoming track when nearing end (<35s)
+        if (audio.duration > 35 && audio.duration - cur < 35) {
           const curQueue = playlistQueueRef.current || [];
           const cTrack = currentTrackRef.current;
           const curIdx = curQueue.findIndex((t) => t.id === cTrack?.id);
-          if (curIdx !== -1 && curIdx + 1 < curQueue.length) {
-            preResolveTrackStream(curQueue[curIdx + 1]).catch(() => {});
+          if (curIdx !== -1 && curQueue.length > 0) {
+            const nextTrackObj =
+              curIdx + 1 < curQueue.length ? curQueue[curIdx + 1] : curQueue[0];
+            if (nextTrackObj) {
+              preResolveTrackStream(nextTrackObj)
+                .then((url) => {
+                  if (
+                    url &&
+                    !url.includes('AudioPreview') &&
+                    prefetchAudioRef.current &&
+                    prefetchAudioRef.current.src !== url
+                  ) {
+                    prefetchAudioRef.current.src = url;
+                    try {
+                      prefetchAudioRef.current.load();
+                    } catch {}
+                  }
+                })
+                .catch(() => { });
+            }
           }
         }
       }
@@ -383,13 +440,8 @@ export function useAudioController(user = null, region = 'ID') {
     const handleEnded = () => {
       if (repeatModeRef.current === 'one') {
         audio.currentTime = 0;
-        audio.play().catch(() => {});
+        audio.play().catch(() => { });
       } else {
-        // Keep mobile audio session active on iOS Safari & Android Chrome while resolving next track
-        try {
-          audio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
-          audio.play().catch(() => {});
-        } catch (e) {}
         handleNextTrackRef.current?.(true);
       }
     };
@@ -417,23 +469,34 @@ export function useAudioController(user = null, region = 'ID') {
       setIsPlaying(false);
     };
 
+    const handleVisibilityChange = () => {
+      if (!document.hidden && isPlayingRef.current && audio.paused && !audio.ended && audio.src) {
+        audio.play().catch(() => { });
+      }
+    };
+
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
     audio.addEventListener('waiting', handleWaiting);
     audio.addEventListener('canplay', handleCanPlay);
+    audio.addEventListener('playing', handlePlaying);
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', handleEnded);
     audio.addEventListener('pause', handlePause);
     audio.addEventListener('error', handleError);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       audio.pause();
+      prefetchAudio.src = '';
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('waiting', handleWaiting);
       audio.removeEventListener('canplay', handleCanPlay);
+      audio.removeEventListener('playing', handlePlaying);
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
       audio.removeEventListener('pause', handlePause);
       audio.removeEventListener('error', handleError);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -582,9 +645,17 @@ export function useAudioController(user = null, region = 'ID') {
       setLoopBState(null);
       setIsLooping(false);
 
-      if (queue && Array.isArray(queue) && queue.length > 0) {
-        setPlaylistQueue(queue);
-        isFinitePlaylistRef.current = queue.length > 1;
+      let seededQueue = queue && Array.isArray(queue) && queue.length > 0 ? queue : null;
+      if (seededQueue) {
+        setPlaylistQueue(seededQueue);
+        isFinitePlaylistRef.current = seededQueue.length > 1;
+      } else if (
+        playlistQueueRef.current.length === 0 ||
+        !playlistQueueRef.current.some((t) => t.id === track.id)
+      ) {
+        seededQueue = [track];
+        setPlaylistQueue(seededQueue);
+        isFinitePlaylistRef.current = false;
       }
 
       // Track session play history (last 40 played tracks FIFO + normalized keys)
@@ -617,26 +688,26 @@ export function useAudioController(user = null, region = 'ID') {
           setCurrentTrack((prev) =>
             prev.id === track.id
               ? {
-                  ...prev,
-                  lyrics: syncedLyrics || [],
-                  plainLyrics: plainLyrics || null,
-                }
+                ...prev,
+                lyrics: syncedLyrics || [],
+                plainLyrics: plainLyrics || null,
+              }
               : prev
           );
         })
-        .catch(() => {});
+        .catch(() => { });
 
       // Check if upcoming queue needs proactive replenishment (< 3 remaining) ONLY if NOT a finite playlist
-      const effectiveQueue = queue && Array.isArray(queue) && queue.length > 0 ? queue : playlistQueue;
+      const effectiveQueue = seededQueue || playlistQueueRef.current || playlistQueue;
       const currentIdx = effectiveQueue.findIndex((t) => t.id === track.id);
-      if (!isFinitePlaylistRef.current && currentIdx !== -1 && effectiveQueue.length - (currentIdx + 1) < 3) {
+      if (!isFinitePlaylistRef.current && (currentIdx === -1 || effectiveQueue.length - (currentIdx + 1) < 3)) {
         triggerAutoQueue(track, false);
       }
 
       // Proactively pre-resolve the NEXT track in queue right now so it's ready ahead of time!
       const nextIdx = currentIdx !== -1 ? currentIdx + 1 : -1;
       if (nextIdx !== -1 && nextIdx < effectiveQueue.length) {
-        preResolveTrackStream(effectiveQueue[nextIdx]).catch(() => {});
+        preResolveTrackStream(effectiveQueue[nextIdx]).catch(() => { });
       }
 
       // Retrieve instant full-length stream URL from cache or resolvedStreamUrl
@@ -645,9 +716,9 @@ export function useAudioController(user = null, region = 'ID') {
         cachedFullStream ||
         track.resolvedStreamUrl ||
         (track.audioUrl &&
-        !track.audioUrl.includes('itunes.apple.com') &&
-        !track.audioUrl.includes('mzstatic') &&
-        !track.audioUrl.includes('AudioPreview')
+          !track.audioUrl.includes('itunes.apple.com') &&
+          !track.audioUrl.includes('mzstatic') &&
+          !track.audioUrl.includes('AudioPreview')
           ? track.audioUrl
           : '');
 
@@ -700,12 +771,12 @@ export function useAudioController(user = null, region = 'ID') {
                   const savedTime = currentAudio.currentTime;
                   currentAudio.src = fullUrl;
                   currentAudio.currentTime = savedTime;
-                  currentAudio.play().catch(() => {});
+                  currentAudio.play().catch(() => { });
                   setCurrentTrack((prev) => (prev?.id === track.id ? { ...prev, audioUrl: fullUrl } : prev));
                 }
               }
             })
-            .catch(() => {});
+            .catch(() => { });
         }
 
         if (audio && finalUrl) {
@@ -749,13 +820,34 @@ export function useAudioController(user = null, region = 'ID') {
                 .then(() => {
                   setIsPlaying(true);
                   setIsLoading(false);
+                  if ('mediaSession' in navigator) {
+                    navigator.mediaSession.playbackState = 'playing';
+                  }
                 })
                 .catch((err) => {
-                  console.warn('Playback error:', err);
-                  setIsLoading(false);
+                  console.warn('Playback error, retrying once:', err);
+                  setTimeout(() => {
+                    if (audioRef.current && currentTrackRef.current?.id === track.id) {
+                      audioRef.current
+                        .play()
+                        .then(() => {
+                          setIsPlaying(true);
+                          setIsLoading(false);
+                        })
+                        .catch(() => {
+                          setIsPlaying(false);
+                          setIsLoading(false);
+                        });
+                    } else {
+                      setIsLoading(false);
+                    }
+                  }, 250);
                 });
             }
           } else {
+            if (audio.paused) {
+              audio.play().catch(() => { });
+            }
             setIsPlaying(true);
             setIsLoading(false);
           }
@@ -961,8 +1053,8 @@ export function useAudioController(user = null, region = 'ID') {
         typeof trackOrId === 'object'
           ? trackOrId
           : currentTrack?.id === trackOrId
-          ? currentTrack
-          : REAL_INITIAL_TRACKS.find((t) => t.id === trackOrId) || {
+            ? currentTrack
+            : REAL_INITIAL_TRACKS.find((t) => t.id === trackOrId) || {
               id: trackOrId,
               title: 'Liked Track',
             };
@@ -1000,13 +1092,13 @@ export function useAudioController(user = null, region = 'ID') {
       const coverUrl = currentTrack.cover || '';
       const artworkList = coverUrl
         ? [
-            { src: coverUrl, sizes: '96x96', type: 'image/jpeg' },
-            { src: coverUrl, sizes: '128x128', type: 'image/jpeg' },
-            { src: coverUrl, sizes: '192x192', type: 'image/jpeg' },
-            { src: coverUrl, sizes: '256x256', type: 'image/jpeg' },
-            { src: coverUrl, sizes: '384x384', type: 'image/jpeg' },
-            { src: coverUrl, sizes: '512x512', type: 'image/jpeg' },
-          ]
+          { src: coverUrl, sizes: '96x96', type: 'image/jpeg' },
+          { src: coverUrl, sizes: '128x128', type: 'image/jpeg' },
+          { src: coverUrl, sizes: '192x192', type: 'image/jpeg' },
+          { src: coverUrl, sizes: '256x256', type: 'image/jpeg' },
+          { src: coverUrl, sizes: '384x384', type: 'image/jpeg' },
+          { src: coverUrl, sizes: '512x512', type: 'image/jpeg' },
+        ]
         : [];
 
       navigator.mediaSession.metadata = new window.MediaMetadata({
@@ -1020,12 +1112,13 @@ export function useAudioController(user = null, region = 'ID') {
 
       if ('setPositionState' in navigator.mediaSession && duration > 0) {
         try {
+          const livePos = audioRef.current?.currentTime || 0;
           navigator.mediaSession.setPositionState({
             duration: Math.max(0, duration),
             playbackRate: playbackSpeedRef.current || 1.0,
-            position: Math.min(Math.max(0, currentTime || 0), duration),
+            position: Math.min(Math.max(0, livePos), duration),
           });
-        } catch (e) {}
+        } catch (e) { }
       }
     } catch (e) {
       console.warn('MediaSession metadata error:', e);

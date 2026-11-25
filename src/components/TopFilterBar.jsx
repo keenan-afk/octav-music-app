@@ -33,7 +33,7 @@ export function TopFilterBar({
   return (
     <div className="sticky top-0 z-30 pt-3 pb-2 px-4 flex items-center justify-between pointer-events-auto backdrop-blur-md bg-[#050507]/40 border-b border-white/[0.04]">
       {/* Left: User Avatar & Filter Capsules */}
-      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5">
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5 min-w-0 flex-1 pr-2">
         {/* User Profile Avatar with Presence Ring */}
         <button
           onClick={onProfileClick}
@@ -67,14 +67,14 @@ export function TopFilterBar({
         </button>
 
         {/* Filter Capsules */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {filters.map((filter) => {
             const isActive = activeFilter === filter;
             return (
               <button
                 key={filter}
                 onClick={() => onSelectFilter(filter)}
-                className={`relative px-3.5 py-1.5 text-xs font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${
+                className={`relative px-3.5 py-1.5 text-xs font-semibold rounded-full whitespace-nowrap flex-shrink-0 transition-all duration-300 active:scale-95 cursor-pointer ${
                   isActive
                     ? 'text-black font-bold shadow-[0_0_16px_rgba(30,215,96,0.35)]'
                     : 'text-white/80 hover:text-white'

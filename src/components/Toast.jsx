@@ -68,35 +68,39 @@ export function Toast({ toast, onDismiss }) {
   };
 
   return (
-    <div
-      ref={toastRef}
-      onClick={handleManualDismiss}
-      className="absolute top-4 sm:top-5 left-1/2 -translate-x-1/2 z-[70] pointer-events-auto cursor-pointer select-none max-w-[340px] px-4 active:scale-95 transition-transform"
-      title="Tap to dismiss"
-    >
-      <LiquidSurface
-        className="px-4 py-2.5 rounded-full border border-white/[0.2] flex items-center gap-2.5 shadow-2xl"
-        style={{
-          background:
-            'linear-gradient(145deg, rgba(28, 28, 36, 0.96) 0%, rgba(14, 14, 20, 0.94) 100%)',
-          backdropFilter: 'blur(28px) saturate(190%) brightness(1.05)',
-          boxShadow:
-            'inset 0 1px 1px 0 rgba(255, 255, 255, 0.5), 0 12px 36px rgba(0, 0, 0, 0.85)',
-        }}
+    <div className="absolute inset-x-0 top-4 sm:top-5 z-[70] flex justify-center px-4 pointer-events-none">
+      <div
+        ref={toastRef}
+        onClick={handleManualDismiss}
+        className="pointer-events-auto cursor-pointer select-none max-w-full sm:max-w-[360px] active:scale-95 transition-transform"
+        title="Tap to dismiss"
       >
-        <div className="w-5 h-5 rounded-full bg-[#1ed760]/20 flex items-center justify-center text-[#1ed760] flex-shrink-0">
-          <CheckCircle2 className="w-3.5 h-3.5" />
-        </div>
-        <span className="text-xs font-bold text-white tracking-tight truncate max-w-[240px]">
-          {toast.message}
-        </span>
-        <button
-          onClick={handleManualDismiss}
-          className="p-0.5 text-white/50 hover:text-white transition-colors ml-1 cursor-pointer"
+        <LiquidSurface
+          rounded="rounded-full"
+          className="border border-white/[0.2] shadow-2xl"
+          contentClassName="px-4 py-2.5 flex items-center gap-2.5"
+          style={{
+            background:
+              'linear-gradient(145deg, rgba(28, 28, 36, 0.96) 0%, rgba(14, 14, 20, 0.94) 100%)',
+            backdropFilter: 'blur(28px) saturate(190%) brightness(1.05)',
+            boxShadow:
+              'inset 0 1px 1px 0 rgba(255, 255, 255, 0.5), 0 12px 36px rgba(0, 0, 0, 0.85)',
+          }}
         >
-          <X className="w-3 h-3" />
-        </button>
-      </LiquidSurface>
+          <div className="w-5 h-5 rounded-full bg-[#1ed760]/20 flex items-center justify-center text-[#1ed760] flex-shrink-0">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+          </div>
+          <span className="text-xs font-bold text-white tracking-tight truncate max-w-[230px] sm:max-w-[260px]">
+            {toast.message}
+          </span>
+          <button
+            onClick={handleManualDismiss}
+            className="p-0.5 text-white/50 hover:text-white transition-colors ml-0.5 flex-shrink-0 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </LiquidSurface>
+      </div>
     </div>
   );
 }
