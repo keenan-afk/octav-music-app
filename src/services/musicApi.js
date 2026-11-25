@@ -1322,3 +1322,124 @@ export async function fetchAlbumTracks(collectionId, region = 'ID') {
     return [];
   }
 }
+
+const _categoryCache = new Map();
+
+async function _collectUniqueTracks(queries = [], region = 'ID', maxPerQuery = 3, limit = 15) {
+  const settled = await Promise.allSettled(
+    queries.map((q) => searchMusic(q, region))
+  );
+  const seen = new Set();
+  const collected = [];
+
+  for (const result of settled) {
+    if (result.status !== 'fulfilled' || !Array.isArray(result.value)) continue;
+    let addedForQuery = 0;
+    for (const track of result.value) {
+      if (!track || !track.title) continue;
+      const dedupeKey = `${(track.title || '').toLowerCase().trim()}::${(track.artist || '').toLowerCase().trim()}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      collected.push(track);
+      addedForQuery += 1;
+      if (addedForQuery >= maxPerQuery || collected.length >= limit) break;
+    }
+    if (collected.length >= limit) break;
+  }
+
+  return collected;
+}
+
+const CATEGORY_QUERIES = {
+  'Indo Hits': [
+    'Tulus Hati Hati di Jalan',
+    'Mahalini Sial',
+    'Nadin Amizah Bertaut',
+    'Dewa 19 Kangen',
+    'Sheila On 7 Dan',
+    'Hindia Evaluasi',
+  ],
+  Rock: [
+    "Guns N' Roses Sweet Child O' Mine",
+    'Queen Bohemian Rhapsody',
+    'Nirvana Smells Like Teen Spirit',
+    'Linkin Park Numb',
+    'Avenged Sevenfold Dear God',
+    'Arctic Monkeys Do I Wanna Know',
+  ],
+  Acoustic: [
+    'Payung Teduh Akad',
+    'John Mayer Slow Dancing Acoustic',
+    'Pamungkas To The Bone',
+    'Ed Sheeran Photograph',
+    'Banda Neira Sampai Jadi Debu',
+    'Fiersa Besari Celengan Rindu',
+  ],
+};
+
+const GENRE_QUERIES = {
+  g1: ["Guns N' Roses Welcome to the Jungle", 'Metallica Enter Sandman', 'Linkin Park In The End', 'Avenged Sevenfold Nightmare', 'Queen We Will Rock You'],
+  g2: ['Tulus Monokrom', 'Mahalini Melawan Restu', 'Raisa Kali Kedua', 'Tiara Andini Usai', 'Lyodra Sang Dewi'],
+  g3: ['Hindia Rumah ke Rumah', 'Feast Peradaban', 'Tame Impala The Less I Know The Better', 'Reality Club Anything You Want', 'Radiohead Creep'],
+  g4: ['Oasis Wonderwall', 'Blur Song 2', 'The Verve Bitter Sweet Symphony', 'Coldplay Yellow', 'Keane Somewhere Only We Know'],
+  g5: ['Dewa 19 Pupus', 'Sheila On 7 Sephia', 'Padi Begitu Indah', 'Nirvana Come As You Are', 'Red Hot Chili Peppers Californication'],
+  g6: ['Payung Teduh Untuk Perempuan Yang Sedang Dalam Pelukan', 'Fourtwnty Zona Nyaman', 'Jason Mraz I Wont Give Up', 'John Mayer Gravity', 'Norah Jones Come Away With Me'],
+  g7: ['Queen Don\'t Stop Me Now', 'Coldplay Viva La Vida', 'Imagine Dragons Believer', 'Bon Jovi Livin On A Prayer', 'U2 With Or Without You'],
+  g8: ['Adele Someone Like You', 'Glenn Fredly Januari', 'Chrisye Seperti Yang Kau Minta', 'Sam Smith Stay With Me', 'Lewis Capaldi Someone You Loved'],
+};
+
+/**
+ * Fetch distinct real tracks for a Home category filter tab
+ */
+export async function fetchCategoryFeed(category, region = 'ID') {
+  if (!category || category === 'All') return [];
+  const cacheKey = `cat:${category}:${region}`;
+  if (_categoryCache.has(cacheKey)) {
+    return _categoryCache.get(cacheKey);
+  }
+
+  let tracks = [];
+  if (category === 'Trending') {
+    const charts = await fetchTopCharts(region, 20);
+    tracks = charts.length > 0 ? charts : await fetchTrendingTracks(region);
+  } else {
+    const queries = CATEGORY_QUERIES[category] || [category];
+    tracks = await _collectUniqueTracks(queries, region, 3, 15);
+    if (category === 'Indo Hits' && region === 'ID' && tracks.length < 12) {
+      const charts = await fetchTopCharts('ID', 10);
+      const seen = new Set(tracks.map((t) => `${(t.title || '').toLowerCase()}::${(t.artist || '').toLowerCase()}`));
+      for (const c of charts) {
+        const k = `${(c.title || '').toLowerCase()}::${(c.artist || '').toLowerCase()}`;
+        if (!seen.has(k)) {
+          seen.add(k);
+          tracks.push(c);
+        }
+        if (tracks.length >= 15) break;
+      }
+    }
+  }
+
+  if (tracks.length > 0) {
+    _categoryCache.set(cacheKey, tracks);
+  }
+  return tracks;
+}
+
+/**
+ * Fetch distinct real tracks for SearchView Browse-All genre cards
+ */
+export async function fetchGenrePlaylistTracks(genreId, genreTitle, region = 'ID') {
+  const cacheKey = `genre:${genreId || genreTitle}:${region}`;
+  if (_categoryCache.has(cacheKey)) {
+    return _categoryCache.get(cacheKey);
+  }
+
+  const queries = GENRE_QUERIES[genreId] || [genreTitle || 'Popular Hits'];
+  const tracks = await _collectUniqueTracks(queries, region, 3, 15);
+
+  if (tracks.length > 0) {
+    _categoryCache.set(cacheKey, tracks);
+  }
+  return tracks;
+}
+

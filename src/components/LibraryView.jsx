@@ -31,6 +31,11 @@ export function LibraryView({
   const [activeFilter, setActiveFilter] = useState('Playlists');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [sortMode, setSortMode] = useState('Recents');
+
+  const cycleSortMode = () => {
+    setSortMode((prev) => (prev === 'Recents' ? 'A-Z' : prev === 'A-Z' ? 'Most Songs' : 'Recents'));
+  };
 
   const filters = ['Playlists', 'Artists', 'Albums', 'Downloaded'];
 
@@ -106,15 +111,27 @@ export function LibraryView({
       items = getDownloadedPlaylists();
     }
 
-    if (!searchQuery.trim()) return items;
-    const q = searchQuery.toLowerCase().trim();
-    return items.filter(
-      (item) =>
-        item.title?.toLowerCase().includes(q) ||
-        item.curator?.toLowerCase().includes(q) ||
-        item.subtitle?.toLowerCase().includes(q)
-    );
-  }, [activeFilter, allPlaylists, artistsList, playlists, searchQuery]);
+    let result = items;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      result = items.filter(
+        (item) =>
+          item.title?.toLowerCase().includes(q) ||
+          item.curator?.toLowerCase().includes(q) ||
+          item.subtitle?.toLowerCase().includes(q)
+      );
+    }
+
+    if (sortMode === 'A-Z') {
+      return [...result].sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    }
+    if (sortMode === 'Most Songs') {
+      return [...result].sort(
+        (a, b) => (b.tracks?.length ?? b.trackCount ?? 0) - (a.tracks?.length ?? a.trackCount ?? 0)
+      );
+    }
+    return result;
+  }, [activeFilter, allPlaylists, artistsList, playlists, searchQuery, sortMode]);
 
   const { user, isAuthenticated } = useAuth();
 
@@ -196,10 +213,15 @@ export function LibraryView({
 
       {/* Sort Row */}
       <div className="flex items-center justify-between text-xs font-semibold text-white/60 mb-2.5">
-        <div className="flex items-center gap-1 hover:text-white cursor-pointer">
+        <button
+          type="button"
+          onClick={cycleSortMode}
+          className="flex items-center gap-1 hover:text-white cursor-pointer transition-colors"
+          title="Change sort order"
+        >
           <ArrowDownUp className="w-3.5 h-3.5" />
-          <span>Recents</span>
-        </div>
+          <span>{sortMode}</span>
+        </button>
         <span className="text-[11px] text-white/40">
           {customPlaylists.length} playlists • {likedTracks.length} saved
         </span>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Play } from 'lucide-react';
 import { SmartArtwork } from './SmartArtwork';
 
@@ -8,30 +8,54 @@ import { SmartArtwork } from './SmartArtwork';
  * with 148x148 rounded-xl cover art, subtle optical glass rim reflections,
  * SmartArtwork auto-recovery, and tight 2-line muted captions.
  */
-export function HorizontalShelf({ title, items = [], onSelectItem, onOpenArtist }) {
+export function HorizontalShelf({ title, items = [], onSelectItem, onOpenArtist, onShowAll }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   if (!items || items.length === 0) return null;
+
+  const handleShowAllClick = () => {
+    if (typeof onShowAll === 'function') {
+      onShowAll(title, items);
+    } else {
+      setIsExpanded((prev) => !prev);
+    }
+  };
 
   return (
     <div className="py-3">
       {/* Section Header */}
       <div className="px-4 mb-2.5 flex items-baseline justify-between">
         <h2 className="text-lg font-extrabold text-white tracking-tight">{title}</h2>
-        <span className="text-xs font-semibold text-white/50 hover:text-white cursor-pointer transition-colors">
-          Show all
-        </span>
+        <button
+          type="button"
+          onClick={handleShowAllClick}
+          className="text-xs font-semibold text-white/50 hover:text-white cursor-pointer transition-colors"
+        >
+          {typeof onShowAll === 'function' ? 'Show all' : isExpanded ? 'Show less' : 'Show all'}
+        </button>
       </div>
 
-      {/* Horizontal Scroll Track */}
-      <div className="flex gap-3 px-4 overflow-x-auto scrollbar-none pb-2 pt-0.5">
+      {/* Horizontal Scroll Track or Expanded Grid */}
+      <div
+        className={
+          isExpanded
+            ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5 px-4 pb-2 pt-0.5'
+            : 'flex gap-3 px-4 overflow-x-auto scrollbar-none pb-2 pt-0.5'
+        }
+      >
         {items.map((item) => (
           <div
             key={item.id}
             onClick={() => onSelectItem(item)}
-            className="group flex-shrink-0 w-[148px] cursor-pointer active:scale-95 transition-transform duration-200"
+            className={`group cursor-pointer active:scale-95 transition-transform duration-200 ${
+              isExpanded ? 'w-full' : 'flex-shrink-0 w-[148px]'
+            }`}
           >
             {/* 148x148 Rounded-XL Cover Art with Specular Rim Edge */}
             <div
-              className="relative w-[148px] h-[148px] rounded-xl overflow-hidden mb-2 border border-white/[0.08]"
+              className={`relative rounded-xl overflow-hidden mb-2 border border-white/[0.08] ${
+                isExpanded ? 'w-full aspect-square' : 'w-[148px] h-[148px]'
+              }`}
               style={{
                 boxShadow:
                   'inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.4), 0 12px 28px rgba(0, 0, 0, 0.65)',

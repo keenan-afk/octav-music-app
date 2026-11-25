@@ -513,7 +513,19 @@ export function SearchView({
                 <div
                   key={genre.id}
                   onClick={() => {
-                    setSearchTerm(genre.title);
+                    if (typeof onOpenPlaylist === 'function') {
+                      onOpenPlaylist({
+                        id: `genre-${genre.id}`,
+                        genreId: genre.id,
+                        title: genre.title,
+                        curator: 'Octav Genres',
+                        description: `Curated ${genre.title} essentials`,
+                        type: 'Playlist',
+                        tracks: [],
+                      });
+                    } else {
+                      setSearchTerm(genre.title);
+                    }
                   }}
                   className="relative h-24 rounded-2xl overflow-hidden p-3.5 cursor-pointer active:scale-95 transition-transform duration-200 border border-white/[0.08]"
                   style={{

@@ -1,11 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Play, Sparkles, Flame, Disc, Radio, TrendingUp, Music } from 'lucide-react';
+import { Play, Sparkles, Flame, Disc, Radio, TrendingUp, Music, Loader2 } from 'lucide-react';
 import { TopFilterBar } from './TopFilterBar';
 import { QuickJumpGrid } from './QuickJumpGrid';
 import { HorizontalShelf } from './HorizontalShelf';
 import { SmartArtwork } from './SmartArtwork';
 import { useAuth } from '../context/AuthContext';
-import { searchMusic, fetchTrendingTracks, fetchNewReleases } from '../services/musicApi';
+import {
+  searchMusic,
+  fetchTrendingTracks,
+  fetchNewReleases,
+  fetchTopCharts,
+  fetchCategoryFeed,
+} from '../services/musicApi';
 import { getRecapEventStatus } from '../services/statsService';
 
 const GREETING_PATTERNS = [
@@ -43,26 +49,56 @@ export function HomeView({
     return pattern.replace('{name}', cleanName);
   }, [user?.displayName, effectiveDisplayName]);
 
-  // Trending Tracks (Regional Top Charts)
+  // Trending Tracks & Live Top Charts (Regional)
   const [trendingTracks, setTrendingTracks] = useState([]);
+  const [chartTracks, setChartTracks] = useState([]);
+  const [categoryTracks, setCategoryTracks] = useState([]);
+  const [isLoadingCategory, setIsLoadingCategory] = useState(false);
 
   useEffect(() => {
     let active = true;
-    async function loadTrending() {
+    async function loadTrendingAndCharts() {
       try {
-        const trending = await fetchTrendingTracks(region);
-        if (active && trending.length > 0) {
-          setTrendingTracks(trending);
-        }
+        const [trending, charts] = await Promise.all([
+          fetchTrendingTracks(region),
+          fetchTopCharts(region, 20),
+        ]);
+        if (!active) return;
+        if (trending.length > 0) setTrendingTracks(trending);
+        if (charts.length > 0) setChartTracks(charts);
       } catch (err) {
-        console.warn('Failed loading trending tracks:', err);
+        console.warn('Failed loading trending/chart tracks:', err);
       }
     }
-    loadTrending();
+    loadTrendingAndCharts();
     return () => {
       active = false;
     };
   }, [region]);
+
+  useEffect(() => {
+    if (activeFilter === 'All') {
+      setCategoryTracks([]);
+      setIsLoadingCategory(false);
+      return;
+    }
+    let active = true;
+    setIsLoadingCategory(true);
+    fetchCategoryFeed(activeFilter, region)
+      .then((list) => {
+        if (active) setCategoryTracks(Array.isArray(list) ? list : []);
+      })
+      .catch((err) => {
+        console.warn(`Failed loading ${activeFilter} feed:`, err);
+        if (active) setCategoryTracks([]);
+      })
+      .finally(() => {
+        if (active) setIsLoadingCategory(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeFilter, region]);
 
   // Shelf 1: "Last Session" / Quick Jump Items
   // Strictly rendered ONLY when user actually has listening history or liked songs.
@@ -161,20 +197,18 @@ export function HomeView({
 
 
 
-  // Shelf 5: "All-Time & Trending Hits" dynamically mapped from regional charts
+  // Shelf 5: "All-Time & Regional Chart Hits" dynamically mapped from live 20-track chart
   const allTimeHits = useMemo(() => {
-    if (trendingTracks.length > 0) {
-      return trendingTracks.map((t, idx) => ({
-        id: `ath-${t.id || idx}`,
-        title: t.title,
-        artist: t.artist,
-        cover: t.cover,
-        subtitle: `${t.artist} • Chart Hit`,
-        trackData: t,
-      }));
-    }
-    return [];
-  }, [trendingTracks]);
+    const source = chartTracks.length > 0 ? chartTracks : trendingTracks;
+    return source.map((t, idx) => ({
+      id: `ath-${t.id || idx}`,
+      title: t.title,
+      artist: t.artist,
+      cover: t.cover,
+      subtitle: `${t.artist} • #${t.rank || idx + 1} Hit`,
+      trackData: t,
+    }));
+  }, [chartTracks, trendingTracks]);
 
   // Dynamic Filter Modes
   const isAll = activeFilter === 'All';
@@ -183,8 +217,33 @@ export function HomeView({
   const isAcoustic = activeFilter === 'Acoustic';
   const isTrending = activeFilter === 'Trending';
 
-  // Specific filtered track sets using genuine metadata + artist/genre matching
+  const toShelfItems = (list, prefix) =>
+    (list || []).map((t, idx) => ({
+      id: `${prefix}-${t.id || idx}`,
+      title: t.title,
+      artist: t.artist,
+      cover: t.cover,
+      subtitle: `${t.artist} • ${t.genre || prefix}`,
+      trackData: t,
+    }));
+
+  const openTrackCollection = (id, title, curator, list) => {
+    if (!onOpenPlaylist || !list || list.length === 0) return;
+    onOpenPlaylist({
+      id,
+      title,
+      curator,
+      cover: list[0]?.cover || '',
+      type: 'Playlist',
+      tracks: list,
+    });
+  };
+
+  // Dedicated category shelf items (powered by distinct API feeds per tab)
   const rockTracks = useMemo(() => {
+    if (isRock && categoryTracks.length > 0) {
+      return toShelfItems(categoryTracks, 'Rock');
+    }
     const rockKeywords = ['rock', 'metal', 'alternative', 'punk', 'grunge', 'hard rock'];
     const rockArtists = ['dewa', 'sheila', 'noah', 'peterpan', 'queen', 'nirvana', 'guns n', 'avenged', 'oasis', 'radiohead', 'arctic monkeys', 'coldplay', 'linkin park', 'padi', 'slank', 'kotak', 'gigi'];
     return allTimeHits.filter((h) => {
@@ -192,13 +251,19 @@ export function HomeView({
       const art = (h.artist || '').toLowerCase();
       return rockKeywords.some((k) => gen.includes(k)) || rockArtists.some((a) => art.includes(a));
     });
-  }, [allTimeHits]);
+  }, [isRock, categoryTracks, allTimeHits]);
 
   const indoTracks = useMemo(() => {
+    if (isIndo && categoryTracks.length > 0) {
+      return toShelfItems(categoryTracks, 'Indo Hits');
+    }
     return region === 'ID' ? allTimeHits : [];
-  }, [allTimeHits, region]);
+  }, [isIndo, categoryTracks, allTimeHits, region]);
 
   const acousticTracks = useMemo(() => {
+    if (isAcoustic && categoryTracks.length > 0) {
+      return toShelfItems(categoryTracks, 'Acoustic');
+    }
     const acousticKeywords = ['acoustic', 'unplugged', 'folk', 'singer/songwriter', 'indie', 'jazz', 'soul'];
     const acousticArtists = ['payung teduh', 'tulus', 'fiersa', 'pamungkas', 'hindia', 'feast', 'nadin', 'sal priadi', 'ed sheeran', 'john mayer', 'norah jones'];
     return allTimeHits.filter((h) => {
@@ -212,7 +277,13 @@ export function HomeView({
         acousticArtists.some((a) => art.includes(a))
       );
     });
-  }, [allTimeHits]);
+  }, [isAcoustic, categoryTracks, allTimeHits]);
+
+  const trendingDisplayTracks = useMemo(() => {
+    if (isTrending && categoryTracks.length > 0) return categoryTracks;
+    if (isTrending && chartTracks.length > 0) return chartTracks;
+    return trendingTracks;
+  }, [isTrending, categoryTracks, chartTracks, trendingTracks]);
 
   return (
     <div className="w-full h-full overflow-y-auto scrollbar-none pb-44">
@@ -277,8 +348,8 @@ export function HomeView({
         );
       })()}
 
-      {/* Shelf 1 — "Last Session" (Rendered ONLY if user actually has listening history or liked songs!) */}
-      {(isAll || isTrending) && quickJumpItems.length > 0 && (
+      {/* Shelf 1 — "Last Session" (Rendered ONLY on All tab if user has history or liked songs) */}
+      {isAll && quickJumpItems.length > 0 && (
         <div className="pt-2">
           <div className="px-4 pb-1 flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-white/50">
@@ -300,50 +371,86 @@ export function HomeView({
         </div>
       )}
 
-      {/* Dedicated Filtered Shelf for Rock */}
-      {isRock && (
-        <div className="py-2">
-          <HorizontalShelf
-            title="Rock & Metal Legends"
-            items={rockTracks}
-            onOpenArtist={onOpenArtist}
-            onSelectItem={(item) => {
-              if (item.trackData) onSelectTrack(item.trackData, rockTracks.map((r) => r.trackData));
-            }}
-          />
-        </div>
-      )}
+      {/* Dedicated Category View for Indo Hits / Rock / Acoustic */}
+      {(isRock || isIndo || isAcoustic) && (() => {
+        const categoryMeta = isRock
+          ? { title: 'Rock & Metal Legends', curator: 'Octav Rock', items: rockTracks, id: `cat-rock-${region}` }
+          : isIndo
+          ? { title: 'Indonesian Masterpieces & Hits', curator: 'Octav Indo', items: indoTracks, id: `cat-indo-${region}` }
+          : { title: 'Acoustic, Unplugged & Chill', curator: 'Octav Unplugged', items: acousticTracks, id: `cat-acoustic-${region}` };
+        const categoryTrackList = categoryMeta.items.map((item) => item.trackData).filter(Boolean);
 
-      {/* Dedicated Filtered Shelf for Indo Hits */}
-      {isIndo && (
-        <div className="py-2">
-          <HorizontalShelf
-            title="Indonesian Masterpieces & Band Classics"
-            items={indoTracks}
-            onOpenArtist={onOpenArtist}
-            onSelectItem={(item) => {
-              if (item.trackData) onSelectTrack(item.trackData, indoTracks.map((r) => r.trackData));
-            }}
-          />
-        </div>
-      )}
+        return (
+          <div className="py-2">
+            {isLoadingCategory && categoryTrackList.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3 text-white/50">
+                <Loader2 className="w-6 h-6 animate-spin text-[#1ed760]" />
+                <span className="text-xs font-semibold">Loading {activeFilter} catalog...</span>
+              </div>
+            ) : (
+              <>
+                <HorizontalShelf
+                  title={categoryMeta.title}
+                  items={categoryMeta.items}
+                  onOpenArtist={onOpenArtist}
+                  onShowAll={() =>
+                    openTrackCollection(categoryMeta.id, categoryMeta.title, categoryMeta.curator, categoryTrackList)
+                  }
+                  onSelectItem={(item) => {
+                    if (item.trackData) onSelectTrack(item.trackData, categoryTrackList);
+                  }}
+                />
+                {categoryTrackList.length > 0 && (
+                  <div className="px-4 pt-3 pb-2">
+                    <h3 className="text-sm font-extrabold text-white/80 tracking-tight mb-2">
+                      Top {activeFilter} Picks
+                    </h3>
+                    <div className="flex flex-col gap-1.5">
+                      {categoryTrackList.map((track, idx) => {
+                        const isCurrent = currentTrack && currentTrack.id === track.id;
+                        return (
+                          <div
+                            key={`${categoryMeta.id}-${track.id}-${idx}`}
+                            onClick={() => {
+                              if (isCurrent) onTogglePlayPause?.();
+                              else onSelectTrack(track, categoryTrackList);
+                            }}
+                            className="flex items-center justify-between p-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] active:scale-[0.99] transition-all cursor-pointer border border-white/[0.04]"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="w-5 text-center text-xs font-bold text-white/40 font-mono">
+                                {idx + 1}
+                              </span>
+                              <SmartArtwork
+                                src={track.cover}
+                                title={track.title}
+                                artist={track.artist}
+                                className="w-11 h-11 rounded-lg object-cover flex-shrink-0 border border-white/10"
+                              />
+                              <div className="min-w-0">
+                                <p className={`text-sm font-bold truncate ${isCurrent ? 'text-[#1ed760]' : 'text-white'}`}>
+                                  {track.title}
+                                </p>
+                                <p className="text-xs text-white/50 truncate">{track.artist}</p>
+                              </div>
+                            </div>
+                            <span className="text-[11px] text-white/40 font-mono pl-2 flex-shrink-0">
+                              {track.durationFormatted || ''}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })()}
 
-      {/* Dedicated Filtered Shelf for Acoustic */}
-      {isAcoustic && (
-        <div className="py-2">
-          <HorizontalShelf
-            title="Acoustic, Unplugged & Chill Jam"
-            items={acousticTracks}
-            onOpenArtist={onOpenArtist}
-            onSelectItem={(item) => {
-              if (item.trackData) onSelectTrack(item.trackData, acousticTracks.map((r) => r.trackData));
-            }}
-          />
-        </div>
-      )}
-
-      {/* Shelf 2 — "More Like [Track Name]" or Regional Trending Shelf */}
-      {(isAll || isTrending) && (
+      {/* Shelf 2 — "More Like [Track Name]" or Regional Trending Shelf (All tab only) */}
+      {isAll && (
         <div className="py-2">
           <div className="px-4 mb-2.5 flex items-baseline justify-between">
             <div className="flex items-center gap-1.5">
@@ -412,7 +519,7 @@ export function HomeView({
       )}
 
       {/* Shelf 3 — "New Releases" (Carousel) */}
-      {(isAll || isIndo || isTrending) && newReleases.length > 0 && (
+      {isAll && newReleases.length > 0 && (
         <HorizontalShelf
           title={region === 'ID' ? 'New Releases in Indonesia' : 'Fresh Global Releases'}
           items={newReleases}
@@ -436,18 +543,37 @@ export function HomeView({
       )}
 
       {/* Shelf 4 — "Trending Songs" */}
-      {(isAll || isTrending) && trendingTracks.length > 0 && (
+      {(isAll || isTrending) && trendingDisplayTracks.length > 0 && (
         <div className="py-3 px-4">
           <div className="mb-2.5 flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <Flame className="w-4 h-4 text-orange-400" />
-              <h2 className="text-lg font-extrabold text-white tracking-tight">Trending Songs</h2>
+              <h2 className="text-lg font-extrabold text-white tracking-tight">
+                {isTrending
+                  ? region === 'ID'
+                    ? 'Top Charts Indonesia'
+                    : 'Global Top Charts'
+                  : 'Trending Songs'}
+              </h2>
             </div>
-            <span className="text-xs font-semibold text-white/50">Updated Hourly</span>
+            <button
+              type="button"
+              onClick={() =>
+                openTrackCollection(
+                  `trending-${region}`,
+                  region === 'ID' ? 'Top Charts Indonesia' : 'Global Top Charts',
+                  'Octav Charts',
+                  trendingDisplayTracks
+                )
+              }
+              className="text-xs font-semibold text-white/50 hover:text-white cursor-pointer transition-colors"
+            >
+              Show all
+            </button>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            {trendingTracks.slice(0, 6).map((track) => {
+            {(isTrending ? trendingDisplayTracks.slice(0, 16) : trendingDisplayTracks.slice(0, 6)).map((track) => {
               const isCurrent = currentTrack && currentTrack.id === track.id;
               return (
                 <div
@@ -456,7 +582,7 @@ export function HomeView({
                     if (isCurrent) {
                       onTogglePlayPause?.();
                     } else {
-                      onSelectTrack(track, trendingTracks);
+                      onSelectTrack(track, trendingDisplayTracks);
                     }
                   }}
                   className="group relative flex items-center h-16 rounded-xl overflow-hidden border border-white/[0.08] cursor-pointer active:scale-[0.98] transition-all bg-white/[0.04] hover:bg-white/[0.08] p-2 gap-2.5"
@@ -493,11 +619,19 @@ export function HomeView({
       )}
 
       {/* Shelf 5 — "All-Time Hits" */}
-      {(isAll || isRock || isIndo) && (
+      {isAll && (
         <HorizontalShelf
-          title={region === 'ID' ? 'Indonesian & Global All-Time Hits' : 'All-Time Legendary Hits'}
+          title={region === 'ID' ? 'Indonesian & Global Chart Hits' : 'Global Chart Hits'}
           items={allTimeHits}
           onOpenArtist={onOpenArtist}
+          onShowAll={() =>
+            openTrackCollection(
+              `charts-${region}`,
+              region === 'ID' ? 'Indonesian & Global Chart Hits' : 'Global Chart Hits',
+              'Octav Charts',
+              allTimeHits.map((h) => h.trackData).filter(Boolean)
+            )
+          }
           onSelectItem={(item) => {
             if (item.trackData) {
               onSelectTrack(item.trackData, allTimeHits.map((h) => h.trackData));
@@ -507,7 +641,7 @@ export function HomeView({
       )}
 
       {/* Live Curated Mixes built from real fetched charts (Zero empty mock playlists) */}
-      {(isAll || isRock || isIndo) && trendingTracks.length >= 3 && (
+      {isAll && trendingTracks.length >= 3 && (
         <HorizontalShelf
           title="Curated Radio Mixes"
           items={[

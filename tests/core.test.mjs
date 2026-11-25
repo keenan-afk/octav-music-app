@@ -22,6 +22,8 @@ const {
   isCompilationOrKaraoke,
   isValidDecryptedStreamUrl,
   streamCache,
+  fetchCategoryFeed,
+  fetchGenrePlaylistTracks,
 } = await import('../src/services/musicApi.js');
 
 const {
@@ -102,4 +104,63 @@ test('api/_des decrypts JioSaavn DES-ECB payload without OpenSSL legacy dependen
   assert.equal(decryptDesEcb('', '38346591'), '');
   assert.equal(decryptDesEcb('invalid', '38346591'), '');
   assert.equal(typeof decryptDesEcb(sampleCipher, '38346591'), 'string');
+});
+
+test('musicApi fetchCategoryFeed & fetchGenrePlaylistTracks issue distinct queries and deduplicate results', async () => {
+  const originalFetch = globalThis.fetch;
+  const calledUrls = [];
+
+  globalThis.fetch = async (url) => {
+    const strUrl = String(url);
+    calledUrls.push(strUrl);
+    if (strUrl.includes('itunes.apple.com/search')) {
+      const termMatch = strUrl.match(/[?&]term=([^&]+)/);
+      const rawTerm = decodeURIComponent(termMatch ? termMatch[1] : 'Track').replace(/\+/g, ' ');
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          resultCount: 2,
+          results: [
+            {
+              wrapperType: 'track',
+              kind: 'song',
+              trackId: Math.floor(Math.random() * 1000000),
+              artistId: 101,
+              trackName: `${rawTerm} Song`,
+              artistName: `${rawTerm.split(' ')[0]} Artist`,
+              collectionName: `${rawTerm} Album`,
+              artworkUrl100: 'https://is1-ssl.mzstatic.com/image/thumb/100x100bb.jpg',
+              trackTimeMillis: 210000,
+              primaryGenreName: 'Pop',
+              previewUrl: 'https://audio-ssl.itunes.apple.com/sample.m4a',
+            },
+          ],
+        }),
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ feed: { entry: [] } }),
+    };
+  };
+
+  try {
+    const rock = await fetchCategoryFeed('Rock', 'US');
+    const acoustic = await fetchCategoryFeed('Acoustic', 'US');
+    const britpop = await fetchGenrePlaylistTracks('g4', 'Britpop Classics', 'US');
+
+    assert.ok(rock.length > 0, 'Rock feed should return tracks');
+    assert.ok(acoustic.length > 0, 'Acoustic feed should return tracks');
+    assert.ok(britpop.length > 0, 'Genre playlist should return tracks');
+    assert.notDeepEqual(
+      rock.map((t) => t.title),
+      acoustic.map((t) => t.title),
+      'Rock and Acoustic category feeds must differ'
+    );
+    assert.ok(calledUrls.some((u) => u.includes('Oasis') || u.includes('Blur')), 'Britpop should query genre-specific artists');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

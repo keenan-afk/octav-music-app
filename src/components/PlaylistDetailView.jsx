@@ -22,7 +22,7 @@ import {
   removePlaylistOffline,
   isPlaylistDownloaded,
 } from '../services/offlineCache';
-import { fetchAlbumTracks } from '../services/musicApi';
+import { fetchAlbumTracks, fetchGenrePlaylistTracks } from '../services/musicApi';
 
 /**
  * Playlist / Album Detail View (Spotify iOS 1:1 Mobile Drill-down)
@@ -71,9 +71,13 @@ export function PlaylistDetailView({
 
   React.useEffect(() => {
     let active = true;
-    if (initialTracks.length === 0 && playlist?.collectionId) {
+    if (initialTracks.length === 0 && (playlist?.collectionId || playlist?.genreId)) {
       setIsLoadingAlbum(true);
-      fetchAlbumTracks(playlist.collectionId, region)
+      const loader = playlist.collectionId
+        ? fetchAlbumTracks(playlist.collectionId, region)
+        : fetchGenrePlaylistTracks(playlist.genreId, playlist.title, region);
+
+      loader
         .then((list) => {
           if (active) setFetchedAlbumTracks(list);
         })
@@ -87,7 +91,7 @@ export function PlaylistDetailView({
     return () => {
       active = false;
     };
-  }, [playlist?.collectionId, initialTracks.length, region]);
+  }, [playlist?.collectionId, playlist?.genreId, playlist?.title, initialTracks.length, region]);
 
   const isCurrentPlaylistPlaying =
     isPlaying && tracks.some((t) => t.id === currentTrack?.id);
@@ -241,7 +245,7 @@ export function PlaylistDetailView({
           title={playlist.isCustom ? 'Change playlist cover image' : playlist.title}
         >
           <SmartArtwork
-            src={playlist.cover}
+            src={playlist.cover || tracks[0]?.cover || ''}
             mosaicCovers={tracks.map((t) => t.cover)}
             className="w-full h-full object-cover"
             alt={playlist.title}
