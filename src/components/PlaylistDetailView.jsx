@@ -7,6 +7,8 @@ import {
   Pause,
   Shuffle,
   ArrowDownCircle,
+  CheckCircle2,
+  Loader2,
   Share2,
   Trash2,
   Music,
@@ -15,6 +17,11 @@ import {
   Camera,
 } from 'lucide-react';
 import { SmartArtwork } from './SmartArtwork';
+import {
+  downloadPlaylistOffline,
+  removePlaylistOffline,
+  isPlaylistDownloaded,
+} from '../services/offlineCache';
 
 /**
  * Playlist / Album Detail View (Spotify iOS 1:1 Mobile Drill-down)
@@ -47,7 +54,14 @@ export function PlaylistDetailView({
   onUpdatePlaylistCover,
 }) {
   const [filterQuery, setFilterQuery] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState('');
+  const [isDownloaded, setIsDownloaded] = useState(() => isPlaylistDownloaded(playlist?.id));
   const fileInputRef = useRef(null);
+
+  React.useEffect(() => {
+    setIsDownloaded(isPlaylistDownloaded(playlist?.id));
+  }, [playlist?.id]);
 
   const isCurrentPlaylistPlaying =
     isPlaying && tracks.some((t) => t.id === currentTrack?.id);
@@ -102,8 +116,32 @@ export function PlaylistDetailView({
     }
   };
 
-  const handleDownload = () => {
-    onShowToast?.('Downloaded playlist for offline playback');
+  const handleDownload = async () => {
+    if (isDownloading) return;
+    if (isDownloaded) {
+      await removePlaylistOffline(playlist.id);
+      setIsDownloaded(false);
+      onShowToast?.('Removed offline download');
+      return;
+    }
+    if (tracks.length === 0) {
+      onShowToast?.('This playlist is empty');
+      return;
+    }
+    setIsDownloading(true);
+    setDownloadProgress(`0/${tracks.length}`);
+    try {
+      const record = await downloadPlaylistOffline(playlist, tracks, (done, total) => {
+        setDownloadProgress(`${done}/${total}`);
+      });
+      setIsDownloaded(true);
+      onShowToast?.(`Saved ${record.tracks.length} songs for offline playback`);
+    } catch (err) {
+      onShowToast?.(err.message || 'Failed downloading playlist');
+    } finally {
+      setIsDownloading(false);
+      setDownloadProgress('');
+    }
   };
 
   const handlePlayAll = () => {
@@ -242,10 +280,28 @@ export function PlaylistDetailView({
             </button>
             <button
               onClick={handleDownload}
-              className="hover:text-white active:scale-90 transition-transform cursor-pointer"
-              title="Download"
+              disabled={isDownloading}
+              className={`flex items-center gap-1 hover:text-white active:scale-90 transition-all cursor-pointer ${
+                isDownloaded ? 'text-[#1ed760]' : ''
+              }`}
+              title={
+                isDownloading
+                  ? `Downloading (${downloadProgress})`
+                  : isDownloaded
+                  ? 'Downloaded offline (tap to remove)'
+                  : 'Download for offline playback'
+              }
             >
-              <ArrowDownCircle className="w-5 h-5" />
+              {isDownloading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin text-[#1ed760]" />
+                  <span className="text-[10px] font-bold text-[#1ed760]">{downloadProgress}</span>
+                </>
+              ) : isDownloaded ? (
+                <CheckCircle2 className="w-5 h-5 text-[#1ed760]" />
+              ) : (
+                <ArrowDownCircle className="w-5 h-5" />
+              )}
             </button>
             <button
               onClick={handleSharePlaylist}

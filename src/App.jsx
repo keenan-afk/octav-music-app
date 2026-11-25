@@ -1,42 +1,39 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Sparkles, Mic2, Radio } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from 'react';
 import { LiquidGlassFilter } from './components/LiquidGlassFilter';
 import { AmbientCanvas } from './components/AmbientCanvas';
-import { TopFilterBar } from './components/TopFilterBar';
-import { QuickJumpGrid } from './components/QuickJumpGrid';
-import { HorizontalShelf } from './components/HorizontalShelf';
-import { PlaylistDetailView } from './components/PlaylistDetailView';
 import { MiniPlayerIsland } from './components/MiniPlayerIsland';
-import { NowPlayingSheet } from './components/NowPlayingSheet';
 import { FloatingTabDock } from './components/FloatingTabDock';
-import { SearchView } from './components/SearchView';
-import { LibraryView } from './components/LibraryView';
-import { SpatialAudioModal } from './components/SpatialAudioModal';
-import { ActionSheet } from './components/ActionSheet';
-import { CreatePlaylistModal } from './components/CreatePlaylistModal';
-import { ArtistProfileSheet } from './components/ArtistProfileSheet';
-import { ProfileDrawer } from './components/ProfileDrawer';
 import { HomeView } from './components/HomeView';
-import { TopChartsView } from './components/TopChartsView';
-import { QueueSheet } from './components/QueueSheet';
-import { PracticeStudioModal } from './components/PracticeStudioModal';
-import { AudioEQModal } from './components/AudioEQModal';
-import { LyricsShareModal } from './components/LyricsShareModal';
-import { StatsModal } from './components/StatsModal';
-import { AuthModal } from './components/AuthModal';
 import { Toast } from './components/Toast';
 import { useAuth } from './context/AuthContext';
 import { useAudioController } from './hooks/useAudioController';
 import { usePlaylists } from './hooks/usePlaylists';
+import { useFollowedArtists } from './hooks/useFollowedArtists';
 import { useRegion } from './hooks/useRegion';
-import { REAL_PLAYLISTS } from './data/mockTracks';
-import { fetchHomeFeed } from './services/musicApi';
+
+const PlaylistDetailView = lazy(() => import('./components/PlaylistDetailView'));
+const SearchView = lazy(() => import('./components/SearchView'));
+const LibraryView = lazy(() => import('./components/LibraryView'));
+const TopChartsView = lazy(() => import('./components/TopChartsView'));
+const NowPlayingSheet = lazy(() => import('./components/NowPlayingSheet'));
+const SpatialAudioModal = lazy(() => import('./components/SpatialAudioModal'));
+const ActionSheet = lazy(() => import('./components/ActionSheet'));
+const CreatePlaylistModal = lazy(() => import('./components/CreatePlaylistModal'));
+const ArtistProfileSheet = lazy(() => import('./components/ArtistProfileSheet'));
+const ProfileDrawer = lazy(() => import('./components/ProfileDrawer'));
+const QueueSheet = lazy(() => import('./components/QueueSheet'));
+const PracticeStudioModal = lazy(() => import('./components/PracticeStudioModal'));
+const AudioEQModal = lazy(() => import('./components/AudioEQModal'));
+const LyricsShareModal = lazy(() => import('./components/LyricsShareModal'));
+const StatsModal = lazy(() => import('./components/StatsModal'));
+const AuthModal = lazy(() => import('./components/AuthModal'));
 
 export function App() {
   const { user } = useAuth();
   const { region, setRegion, toggleRegion, isIndo } = useRegion();
   const audio = useAudioController(user, region);
   const playlistsManager = usePlaylists(user);
+  const followedManager = useFollowedArtists(user);
 
   const [activeTab, setActiveTab] = useState('home');
   const [activeFilter, setActiveFilter] = useState('All');
@@ -232,85 +229,89 @@ export function App() {
 
         {/* Main Content Area */}
         <div className="relative z-10 flex-1 overflow-hidden flex flex-col">
-          {currentActivePlaylist ? (
-            /* Playlist Detail View */
-            <PlaylistDetailView
-              playlist={currentActivePlaylist}
-              onBack={handleBackFromPlaylist}
-              currentTrack={audio.currentTrack}
-              isPlaying={audio.isPlaying}
-              onSelectTrack={audio.playTrack}
-              onTogglePlayPause={audio.togglePlayPause}
-              likedTrackIds={audio.likedTrackIds}
-              onToggleLike={audio.toggleLike}
-              tracks={currentActivePlaylist.tracks || homeTracks}
-              onOpenActionSheet={openActionSheet}
-              onDeletePlaylist={playlistsManager.deletePlaylist}
-              onRemoveTrackFromPlaylist={playlistsManager.removeTrackFromPlaylist}
-              onShowToast={showToast}
-              onOpenArtist={handleOpenArtist}
-              isShuffle={audio.isShuffle}
-              onToggleShuffle={() => audio.setIsShuffle((p) => !p)}
-              onUpdatePlaylistCover={playlistsManager.updatePlaylistCover}
-            />
-          ) : activeTab === 'charts' ? (
-            /* Top Charts View */
-            <TopChartsView
-              region={region}
-              currentTrack={audio.currentTrack}
-              isPlaying={audio.isPlaying}
-              likedTrackIds={audio.likedTrackIds}
-              onSelectTrack={audio.playTrack}
-              onTogglePlayPause={audio.togglePlayPause}
-              onToggleLike={audio.toggleLike}
-              onOpenActionSheet={openActionSheet}
-              onOpenArtist={handleOpenArtist}
-            />
-          ) : activeTab === 'search' ? (
-            /* Search View */
-            <SearchView
-              region={region}
-              onToggleRegion={handleToggleRegion}
-              currentTrack={audio.currentTrack}
-              isPlaying={audio.isPlaying}
-              likedTrackIds={audio.likedTrackIds}
-              onSelectTrack={audio.playTrack}
-              onToggleLike={audio.toggleLike}
-              onOpenPlaylist={handleOpenPlaylist}
-              onOpenActionSheet={openActionSheet}
-              onOpenArtist={handleOpenArtist}
-            />
-          ) : activeTab === 'library' ? (
-            /* Your Library View */
-            <LibraryView
-              playlists={[]}
-              customPlaylists={playlistsManager.customPlaylists}
-              likedTracks={audio.likedTracks}
-              recentlyPlayed={audio.recentlyPlayed}
-              currentTrack={audio.currentTrack}
-              isPlaying={audio.isPlaying}
-              onOpenPlaylist={handleOpenPlaylist}
-              onSelectTrack={audio.playTrack}
-              onOpenCreatePlaylist={() => setIsCreatePlaylistOpen(true)}
-              onProfileClick={() => setIsProfileDrawerOpen(true)}
-            />
-          ) : (
-            /* Dynamic Personalized Home View */
-            <HomeView
-              region={region}
-              onToggleRegion={handleToggleRegion}
-              currentTrack={audio.currentTrack}
-              isPlaying={audio.isPlaying}
-              likedTracks={audio.likedTracks}
-              recentlyPlayed={audio.recentlyPlayed}
-              onSelectTrack={audio.playTrack}
-              onOpenPlaylist={handleOpenPlaylist}
-              onProfileClick={() => setIsProfileDrawerOpen(true)}
-              onShowToast={showToast}
-              onOpenArtist={handleOpenArtist}
-              onOpenRecap={() => setIsRecapModalOpen(true)}
-            />
-          )}
+          <Suspense fallback={null}>
+            {currentActivePlaylist ? (
+              /* Playlist Detail View */
+              <PlaylistDetailView
+                playlist={currentActivePlaylist}
+                onBack={handleBackFromPlaylist}
+                currentTrack={audio.currentTrack}
+                isPlaying={audio.isPlaying}
+                onSelectTrack={audio.playTrack}
+                onTogglePlayPause={audio.togglePlayPause}
+                likedTrackIds={audio.likedTrackIds}
+                onToggleLike={audio.toggleLike}
+                tracks={currentActivePlaylist.tracks || homeTracks}
+                onOpenActionSheet={openActionSheet}
+                onDeletePlaylist={playlistsManager.deletePlaylist}
+                onRemoveTrackFromPlaylist={playlistsManager.removeTrackFromPlaylist}
+                onShowToast={showToast}
+                onOpenArtist={handleOpenArtist}
+                isShuffle={audio.isShuffle}
+                onToggleShuffle={() => audio.setIsShuffle((p) => !p)}
+                onUpdatePlaylistCover={playlistsManager.updatePlaylistCover}
+              />
+            ) : activeTab === 'charts' ? (
+              /* Top Charts View */
+              <TopChartsView
+                region={region}
+                currentTrack={audio.currentTrack}
+                isPlaying={audio.isPlaying}
+                likedTrackIds={audio.likedTrackIds}
+                onSelectTrack={audio.playTrack}
+                onTogglePlayPause={audio.togglePlayPause}
+                onToggleLike={audio.toggleLike}
+                onOpenActionSheet={openActionSheet}
+                onOpenArtist={handleOpenArtist}
+              />
+            ) : activeTab === 'search' ? (
+              /* Search View */
+              <SearchView
+                region={region}
+                onToggleRegion={handleToggleRegion}
+                currentTrack={audio.currentTrack}
+                isPlaying={audio.isPlaying}
+                likedTrackIds={audio.likedTrackIds}
+                onSelectTrack={audio.playTrack}
+                onToggleLike={audio.toggleLike}
+                onOpenPlaylist={handleOpenPlaylist}
+                onOpenActionSheet={openActionSheet}
+                onOpenArtist={handleOpenArtist}
+              />
+            ) : activeTab === 'library' ? (
+              /* Your Library View */
+              <LibraryView
+                playlists={[]}
+                customPlaylists={playlistsManager.customPlaylists}
+                likedTracks={audio.likedTracks}
+                recentlyPlayed={audio.recentlyPlayed}
+                followedArtists={followedManager.followedArtists}
+                currentTrack={audio.currentTrack}
+                isPlaying={audio.isPlaying}
+                onOpenPlaylist={handleOpenPlaylist}
+                onOpenArtist={handleOpenArtist}
+                onSelectTrack={audio.playTrack}
+                onOpenCreatePlaylist={() => setIsCreatePlaylistOpen(true)}
+                onProfileClick={() => setIsProfileDrawerOpen(true)}
+              />
+            ) : (
+              /* Dynamic Personalized Home View */
+              <HomeView
+                region={region}
+                onToggleRegion={handleToggleRegion}
+                currentTrack={audio.currentTrack}
+                isPlaying={audio.isPlaying}
+                likedTracks={audio.likedTracks}
+                recentlyPlayed={audio.recentlyPlayed}
+                onSelectTrack={audio.playTrack}
+                onOpenPlaylist={handleOpenPlaylist}
+                onProfileClick={() => setIsProfileDrawerOpen(true)}
+                onShowToast={showToast}
+                onOpenArtist={handleOpenArtist}
+                onOpenRecap={() => setIsRecapModalOpen(true)}
+              />
+            )}
+          </Suspense>
         </div>
 
         {/* Separation Layer: Fixed Bottom Ambient Vignette behind floating bars */}
@@ -343,58 +344,64 @@ export function App() {
           <div className="w-32 h-1 bg-white/30 rounded-full" />
         </div>
 
-        {/* Full-Screen "Now Playing" Sheet */}
-        {audio.currentTrack && (
-          <NowPlayingSheet
-            isOpen={isExpanded}
-            isExpanded={isExpanded}
-            onClose={() => setIsExpanded(false)}
+        {/* Lazy-loaded Modals & Sheets for optimal mobile startup */}
+        <Suspense fallback={null}>
+          {/* Full-Screen "Now Playing" Sheet */}
+          {audio.currentTrack && (
+            <NowPlayingSheet
+              isOpen={isExpanded}
+              isExpanded={isExpanded}
+              onClose={() => setIsExpanded(false)}
+              currentTrack={audio.currentTrack}
+              isPlaying={audio.isPlaying}
+              currentTime={audio.currentTime}
+              duration={audio.duration}
+              progress={audio.progress}
+              isLiked={audio.isLiked}
+              isShuffle={audio.isShuffle}
+              setIsShuffle={audio.setIsShuffle}
+              repeatMode={audio.repeatMode}
+              setRepeatMode={audio.setRepeatMode}
+              onTogglePlayPause={audio.togglePlayPause}
+              onNextTrack={audio.nextTrack}
+              onPrevTrack={audio.prevTrack}
+              onSeekTo={audio.seekTo}
+              onToggleLike={audio.toggleLike}
+              onOpenSpatialAudio={() => setIsSpatialModalOpen(true)}
+              onOpenEQ={() => setIsAudioEQOpen(true)}
+              onOpenStudio={() => setIsPracticeStudioOpen(true)}
+              onOpenLyricsShare={() => setIsLyricsShareOpen(true)}
+              onOpenArtist={handleOpenArtist}
+              onOpenQueue={() => setIsQueueOpen(true)}
+              loopA={audio.loopA}
+              loopB={audio.loopB}
+              onOpenActionSheet={openActionSheet}
+              onShowToast={showToast}
+              formatTime={audio.formatTime}
+              formatRemainingTime={audio.formatRemainingTime}
+              activePlaylistTitle={currentActivePlaylist?.title || "Now Playing"}
+              isFollowingArtist={followedManager.isFollowingArtist}
+              onToggleFollowArtist={followedManager.toggleFollowArtist}
+            />
+          )}
+
+          {/* Artist Profile & Discography Sheet */}
+          <ArtistProfileSheet
+            isOpen={isArtistSheetOpen}
+            onClose={() => setIsArtistSheetOpen(false)}
+            artist={selectedArtist}
+            region={region}
             currentTrack={audio.currentTrack}
             isPlaying={audio.isPlaying}
-            currentTime={audio.currentTime}
-            duration={audio.duration}
-            progress={audio.progress}
-            isLiked={audio.isLiked}
-            isShuffle={audio.isShuffle}
-            setIsShuffle={audio.setIsShuffle}
-            repeatMode={audio.repeatMode}
-            setRepeatMode={audio.setRepeatMode}
+            onSelectTrack={audio.playTrack}
             onTogglePlayPause={audio.togglePlayPause}
-            onNextTrack={audio.nextTrack}
-            onPrevTrack={audio.prevTrack}
-            onSeekTo={audio.seekTo}
+            likedTrackIds={audio.likedTrackIds}
             onToggleLike={audio.toggleLike}
-            onOpenSpatialAudio={() => setIsSpatialModalOpen(true)}
-            onOpenEQ={() => setIsAudioEQOpen(true)}
-            onOpenStudio={() => setIsPracticeStudioOpen(true)}
-            onOpenLyricsShare={() => setIsLyricsShareOpen(true)}
-            onOpenArtist={handleOpenArtist}
-            onOpenQueue={() => setIsQueueOpen(true)}
-            loopA={audio.loopA}
-            loopB={audio.loopB}
             onOpenActionSheet={openActionSheet}
             onShowToast={showToast}
-            formatTime={audio.formatTime}
-            formatRemainingTime={audio.formatRemainingTime}
-            activePlaylistTitle={currentActivePlaylist?.title || "Now Playing"}
+            isFollowingArtist={followedManager.isFollowingArtist}
+            onToggleFollowArtist={followedManager.toggleFollowArtist}
           />
-        )}
-
-        {/* Artist Profile & Discography Sheet */}
-        <ArtistProfileSheet
-          isOpen={isArtistSheetOpen}
-          onClose={() => setIsArtistSheetOpen(false)}
-          artist={selectedArtist}
-          region={region}
-          currentTrack={audio.currentTrack}
-          isPlaying={audio.isPlaying}
-          onSelectTrack={audio.playTrack}
-          onTogglePlayPause={audio.togglePlayPause}
-          likedTrackIds={audio.likedTrackIds}
-          onToggleLike={audio.toggleLike}
-          onOpenActionSheet={openActionSheet}
-          onShowToast={showToast}
-        />
 
         {/* Octav Action Sheet (Context Menu) */}
         {(actionTrack || audio.currentTrack) && (
@@ -507,16 +514,17 @@ export function App() {
         {/* Authentication Modal */}
         <AuthModal onShowToast={showToast} />
 
-        {/* Octav Monthly Recap & Yearly Wrapped Modal */}
-        <StatsModal
-          isOpen={isRecapModalOpen}
-          onClose={() => setIsRecapModalOpen(false)}
-          onShowToast={showToast}
-          onSelectTrack={(track) => {
-            audio.playTrack(track);
-            setIsRecapModalOpen(false);
-          }}
-        />
+          {/* Octav Monthly Recap & Yearly Wrapped Modal */}
+          <StatsModal
+            isOpen={isRecapModalOpen}
+            onClose={() => setIsRecapModalOpen(false)}
+            onShowToast={showToast}
+            onSelectTrack={(track) => {
+              audio.playTrack(track);
+              setIsRecapModalOpen(false);
+            }}
+          />
+        </Suspense>
 
         {/* Single-Instance Liquid Glass Floating Toast (Strictly once, no infinite loops) */}
         <Toast toast={toast} onDismiss={dismissToast} />

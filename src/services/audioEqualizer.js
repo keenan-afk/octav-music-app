@@ -10,6 +10,8 @@
 
 const STORAGE_KEY_EQ_CURVE = 'octav_audio_eq_curve';
 const STORAGE_KEY_EQ_PRESET = 'octav_audio_eq_preset';
+const STORAGE_KEY_SPATIAL_ENABLED = 'octav_spatial_enabled';
+const STORAGE_KEY_SPATIAL_MODE = 'octav_spatial_mode';
 
 export const EQ_PRESETS = {
   flat: {
@@ -17,6 +19,18 @@ export const EQ_PRESETS = {
     name: 'Balanced',
     desc: 'Clean, neutral sound profile',
     values: { sub: 0, bass: 0, mid: 0, highMid: 0, treble: 0 },
+  },
+  visionSpatial: {
+    id: 'visionSpatial',
+    name: 'Immersive 3D',
+    desc: 'Balanced sparkle with wide air stage',
+    values: { sub: 4, bass: 2, mid: 1, highMid: 3, treble: 5 },
+  },
+  bassBoost: {
+    id: 'bassBoost',
+    name: 'Bass Boost',
+    desc: 'Deep sub-bass lift for electronic & hip-hop',
+    values: { sub: 6, bass: 4, mid: 0, highMid: -1, treble: -2 },
   },
   rock: {
     id: 'rock',
@@ -29,6 +43,18 @@ export const EQ_PRESETS = {
     name: 'Vocal',
     desc: 'Clear vocals and acoustic instruments',
     values: { sub: -2, bass: 0, mid: 4, highMid: 3, treble: 2 },
+  },
+  electronic: {
+    id: 'electronic',
+    name: 'Electronic',
+    desc: 'Crisp high hats and sub energy',
+    values: { sub: 5, bass: 3, mid: -1, highMid: 2, treble: 5 },
+  },
+  acoustic: {
+    id: 'acoustic',
+    name: 'Acoustic',
+    desc: 'Natural warm guitar and wood resonance',
+    values: { sub: 2, bass: 1, mid: 2, highMid: 2, treble: 4 },
   },
   warm: {
     id: 'warm',
@@ -62,8 +88,14 @@ class AudioEqualizerEngine {
     this.spatialConvolver = null;
     this.dryGain = null;
     this.wetGain = null;
-    this.isSpatialEnabled = true;
-    this.spatialMode = 'vision'; // 'stereo' | 'studio' | 'vision'
+    try {
+      const savedSpatial = localStorage.getItem(STORAGE_KEY_SPATIAL_ENABLED);
+      this.isSpatialEnabled = savedSpatial !== null ? savedSpatial === 'true' : true;
+      this.spatialMode = localStorage.getItem(STORAGE_KEY_SPATIAL_MODE) || 'vision';
+    } catch {
+      this.isSpatialEnabled = true;
+      this.spatialMode = 'vision';
+    }
     this.isInitialized = false;
     this.audioElement = null;
 
@@ -75,15 +107,46 @@ class AudioEqualizerEngine {
     } catch {}
 
     this.bandValues = savedValues || {
-      sub: 3, // 60Hz
-      bass: 2, // 230Hz
-      mid: 1, // 910Hz
-      highMid: 3, // 3.6kHz
-      treble: 4, // 14kHz
+      sub: 0, // 60Hz
+      bass: 0, // 230Hz
+      mid: 0, // 910Hz
+      highMid: 0, // 3.6kHz
+      treble: 0, // 14kHz
     };
 
-    this.activePreset = localStorage.getItem(STORAGE_KEY_EQ_PRESET) || 'custom';
+    try {
+      this.activePreset = localStorage.getItem(STORAGE_KEY_EQ_PRESET) || 'flat';
+    } catch {
+      this.activePreset = 'flat';
+    }
     this.activeIsolator = 'normal'; // 'normal' | 'guitarFocus' | 'backingTrack' | 'bassPunch'
+  }
+
+  _createRoomImpulse(durationSec = 1.1, decay = 3.2) {
+    const rate = this.ctx.sampleRate || 44100;
+    const length = Math.floor(rate * durationSec);
+    const impulse = this.ctx.createBuffer(2, length, rate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = impulse.getChannelData(ch);
+      for (let i = 0; i < length; i++) {
+        // Gentle early reflection envelope so vocals remain crisp
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+      }
+    }
+    return impulse;
+  }
+
+  _updateSpatialMix() {
+    if (!this.ctx || !this.dryGain || !this.wetGain) return;
+    const wetByMode = {
+      stereo: 0.1,
+      studio: 0.18,
+      vision: 0.3,
+    };
+    const targetWet = this.isSpatialEnabled ? (wetByMode[this.spatialMode] ?? 0.25) : 0;
+    const targetDry = 1 - targetWet * 0.25;
+    this.dryGain.gain.setTargetAtTime(targetDry, this.ctx.currentTime, 0.04);
+    this.wetGain.gain.setTargetAtTime(targetWet, this.ctx.currentTime, 0.04);
   }
 
   init(audioElement) {
@@ -100,11 +163,6 @@ class AudioEqualizerEngine {
       audioElement.preservesPitch = true;
       audioElement.mozPreservesPitch = true;
       audioElement.webkitPreservesPitch = true;
-
-      // Configure crossOrigin if not set
-      if (!audioElement.crossOrigin) {
-        audioElement.crossOrigin = 'anonymous';
-      }
 
       // Connect source to filters
       this.source = this.ctx.createMediaElementSource(audioElement);
@@ -136,10 +194,21 @@ class AudioEqualizerEngine {
         prevNode = filter;
       });
 
-      // Route filter chain directly to analyser and master destination (ultra-clean, zero stutter)
-      prevNode.connect(this.analyser);
+      // Parallel Dry + Spatial Convolver room stage -> Master Analyser -> Speakers
+      this.dryGain = this.ctx.createGain();
+      this.wetGain = this.ctx.createGain();
+      this.spatialConvolver = this.ctx.createConvolver();
+      this.spatialConvolver.buffer = this._createRoomImpulse(0.95, 3.5);
+
+      prevNode.connect(this.dryGain);
+      prevNode.connect(this.spatialConvolver);
+      this.spatialConvolver.connect(this.wetGain);
+
+      this.dryGain.connect(this.analyser);
+      this.wetGain.connect(this.analyser);
       this.analyser.connect(this.ctx.destination);
 
+      this._updateSpatialMix();
       this.isInitialized = true;
     } catch (e) {
       console.warn('Web Audio Equalizer initialization warning:', e.message);
@@ -149,16 +218,31 @@ class AudioEqualizerEngine {
 
   toggleSpatial(enabled) {
     this.isSpatialEnabled = Boolean(enabled);
+    try {
+      localStorage.setItem(STORAGE_KEY_SPATIAL_ENABLED, String(this.isSpatialEnabled));
+    } catch {}
+    this._updateSpatialMix();
   }
 
   setSpatialMode(mode) {
     this.spatialMode = mode;
+    try {
+      localStorage.setItem(STORAGE_KEY_SPATIAL_MODE, mode);
+    } catch {}
+    this._updateSpatialMix();
   }
 
   resume() {
     if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      this.ctx.resume().catch(() => {});
     }
+  }
+
+  getSpatialSettings() {
+    return {
+      isSpatialEnabled: this.isSpatialEnabled,
+      spatialMode: this.spatialMode,
+    };
   }
 
   getBandValues() {

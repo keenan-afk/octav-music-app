@@ -18,12 +18,7 @@ import {
 import { LiquidSurface } from './LiquidGlassFilter';
 import { SmartArtwork } from './SmartArtwork';
 import { fetchArtistDiscography } from '../services/musicApi';
-import { syncUserDataToCloud } from '../services/supabaseClient';
-import { useAuth } from '../context/AuthContext';
 import gsap from 'gsap';
-
-const STORAGE_KEY_FOLLOWED = 'octav_followed_artists';
-const LEGACY_STORAGE_KEY_FOLLOWED = 'vetra_followed_artists';
 
 export function ArtistProfileSheet({
   isOpen,
@@ -38,8 +33,9 @@ export function ArtistProfileSheet({
   onToggleLike,
   onOpenActionSheet,
   onShowToast,
+  isFollowingArtist,
+  onToggleFollowArtist,
 }) {
-  const { user } = useAuth();
   const sheetRef = useRef(null);
   const [tracks, setTracks] = useState([]);
   const [albums, setAlbums] = useState([]);
@@ -47,49 +43,14 @@ export function ArtistProfileSheet({
   const [isLoading, setIsLoading] = useState(false);
   const [isShuffle, setIsShuffle] = useState(false);
 
-  // Followed artists state persisted in localStorage and synced to Supabase
-  const [followedArtists, setFollowedArtists] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_FOLLOWED) || localStorage.getItem(LEGACY_STORAGE_KEY_FOLLOWED);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
   const artistName = typeof artist === 'object' ? (artist?.name || artist?.title || '') : (artist || '');
-  const isFollowing = followedArtists.includes(artistName);
+  const isFollowing = isFollowingArtist ? isFollowingArtist(artistName) : false;
 
-  // Sync followed artists when cloud profile hydrates
-  useEffect(() => {
-    if (Array.isArray(user?.cloudLibrary?.followedArtists)) {
-      setFollowedArtists(user.cloudLibrary.followedArtists);
-    }
-  }, [user?.cloudLibrary?.followedArtists]);
-
-  // Persist followed artists locally and sync to Supabase Cloud
   const toggleFollow = useCallback(() => {
     if (!artistName) return;
-    setFollowedArtists((prev) => {
-      let updated;
-      if (prev.includes(artistName)) {
-        updated = prev.filter((a) => a !== artistName);
-        onShowToast?.(`Unfollowed ${artistName}`);
-      } else {
-        updated = [...prev, artistName];
-        onShowToast?.(`Following ${artistName}`);
-      }
-      try {
-        localStorage.setItem(STORAGE_KEY_FOLLOWED, JSON.stringify(updated));
-        if (user?.id && user?.isSupabase) {
-          syncUserDataToCloud({ followedArtists: updated });
-        }
-      } catch (e) {
-        console.warn('Failed saving followed artists:', e);
-      }
-      return updated;
-    });
-  }, [artistName, onShowToast, user?.id, user?.isSupabase]);
+    const nowFollowing = onToggleFollowArtist?.(artistName);
+    onShowToast?.(nowFollowing ? `Following ${artistName}` : `Unfollowed ${artistName}`);
+  }, [artistName, onShowToast, onToggleFollowArtist]);
 
   // GSAP Spring Slide-in / Slide-out Animation
   useEffect(() => {

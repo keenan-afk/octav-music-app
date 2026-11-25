@@ -24,8 +24,27 @@ const ORGANIC_PALETTES = [
   { primary: '#2d3748', secondary: '#1a202c', accent: '#81e6d9' }, // Nordic Granite Teal
 ];
 
-// In-memory cache for resolved full-length audio stream URLs
-const streamCache = new Map();
+// In-memory TTL cache (30 mins) for resolved full-length audio stream URLs
+const STREAM_CACHE_TTL_MS = 30 * 60 * 1000;
+class TTLCache extends Map {
+  get(key) {
+    const entry = super.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiresAt) {
+      super.delete(key);
+      return undefined;
+    }
+    return entry.url;
+  }
+  has(key) {
+    return this.get(key) !== undefined;
+  }
+  set(key, url) {
+    if (!url) return this;
+    return super.set(key, { url, expiresAt: Date.now() + STREAM_CACHE_TTL_MS });
+  }
+}
+const streamCache = new TTLCache();
 
 /**
  * Cross-platform timeout signal helper compatible with iOS Safari & all WebViews
@@ -33,7 +52,7 @@ const streamCache = new Map();
  */
 export function safeTimeoutSignal(ms = 5000) {
   const controller = new AbortController();
-  const id = setTimeout(() => {
+  setTimeout(() => {
     try {
       controller.abort();
     } catch {}
@@ -859,6 +878,7 @@ export async function searchMusic(rawQuery, region = 'ID') {
       cover: cover || '',
       audioUrl: item.previewUrl || '',
       palette: getPaletteForTrack(title, artist),
+      genre: item.primaryGenreName || 'Music',
       releaseYear: item.releaseDate ? new Date(item.releaseDate).getFullYear() : 2024,
       explicit: item.trackExplicitness === 'explicit',
       artistId: item.artistId,
@@ -1042,14 +1062,10 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
         };
       });
 
-    // Generate a deterministic realistic monthly listener count based on name hash
-    let hash = 0;
-    for (let i = 0; i < finalArtistName.length; i++) {
-      hash = (hash << 5) - hash + finalArtistName.charCodeAt(i);
-      hash |= 0;
-    }
-    const listenerNum = 1200000 + Math.abs(hash % 7500000);
-    const monthlyListeners = `${listenerNum.toLocaleString()} monthly listeners`;
+    const genreLabel = artistObj?.primaryGenreName || rawSongs[0]?.primaryGenreName || 'Artist Catalog';
+    const catalogSummary = albums.length > 0
+      ? `${albums.length} albums • ${genreLabel}`
+      : `${tracks.length} top songs • ${genreLabel}`;
 
     // Strictly resolve verified artist portrait from official catalog
     const verifiedPortrait = await fetchArtistPortrait(finalArtistName, countryCode);
@@ -1061,10 +1077,10 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
       artist: {
         id: artistId || tracks[0]?.artistId || finalArtistName,
         name: finalArtistName,
-        genre: artistObj?.primaryGenreName || rawSongs[0]?.primaryGenreName || 'Rock & Pop',
+        genre: genreLabel,
         cover: artistCover,
         totalTracks: tracks.length,
-        monthlyListeners,
+        monthlyListeners: catalogSummary,
       },
       tracks,
       albums,
@@ -1078,7 +1094,7 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
         genre: 'Pop / Rock',
         cover: initialCover || '',
         totalTracks: 0,
-        monthlyListeners: '2,480,192 monthly listeners',
+        monthlyListeners: 'Verified Artist Catalog',
       },
       tracks: [],
       albums: [],

@@ -52,6 +52,7 @@ export function formatSupabaseUser(supabaseUser) {
       likedTracks: Array.isArray(meta.likedTracks) ? meta.likedTracks : null,
       customPlaylists: Array.isArray(meta.customPlaylists) ? meta.customPlaylists : null,
       followedArtists: Array.isArray(meta.followedArtists) ? meta.followedArtists : null,
+      listeningStats: meta.listeningStats || null,
       lastSyncedAt: meta.lastSyncedAt || null,
     },
     rawUser: supabaseUser,
@@ -308,109 +309,10 @@ export async function signIn({ identifier, password }) {
 }
 
 /**
- * Continue with Google (OAuth or Interactive Chooser)
+ * Continue with Google (Strict Real Supabase OAuth)
+ * No insecure deterministic password shortcuts or spoofed choosers.
  */
-export async function signInWithGoogle(googleAccount) {
-  await new Promise((r) => setTimeout(r, 350));
-
-  // If provided directly from GoogleAccountChooser
-  if (googleAccount && googleAccount.email && googleAccount.name) {
-    const cleanEmail = googleAccount.email.trim().toLowerCase();
-    const cleanName = googleAccount.name.trim();
-    const username = cleanEmail.split('@')[0].replace(/[^a-z0-9_]/g, '');
-
-    // Deterministic password for cross-device Supabase cloud authentication
-    const deterministicPassword = `Octav_Sync_${btoa(cleanEmail).replace(/[^a-zA-Z0-9]/g, '').slice(0, 16)}_2026!`;
-
-    // 1. Authenticate with Supabase Cloud so PC and Mobile sync the exact same account
-    if (isSupabaseConfigured && supabase) {
-      try {
-        let sbUser = null;
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password: deterministicPassword,
-        });
-
-        if (!signInError && signInData?.user) {
-          sbUser = signInData.user;
-        } else {
-          // If not registered yet in Supabase, create deterministic account
-          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-            email: cleanEmail,
-            password: deterministicPassword,
-            options: {
-              data: {
-                username,
-                display_name: cleanName || username,
-                avatar:
-                  googleAccount.avatar ||
-                  `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(getInitials(cleanName))}&backgroundColor=1ed760&textColor=000000&chars=2`,
-              },
-            },
-          });
-
-          if (!signUpError && signUpData?.user) {
-            sbUser = signUpData.user;
-          }
-        }
-
-        if (sbUser) {
-          const formatted = formatSupabaseUser(sbUser);
-          saveSession(formatted);
-
-          // Save to local users registry
-          const users = getUsersDB();
-          const existingIdx = users.findIndex((u) => u.email === cleanEmail);
-          if (existingIdx !== -1) {
-            users[existingIdx] = { ...users[existingIdx], ...formatted };
-          } else {
-            users.push(formatted);
-          }
-          saveUsersDB(users);
-
-          migrateGuestDataToUser(formatted.id);
-          return formatted;
-        }
-      } catch (sbErr) {
-        console.warn('Supabase Google cloud auth warning:', sbErr);
-      }
-    }
-
-    // 2. Offline / Local Fallback: Deterministic user ID based on email
-    // Guarantees PC and Phone have the identical user ID for the same Gmail account
-    const deterministicId = `usr_g_${btoa(cleanEmail).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`;
-    const users = getUsersDB();
-    let user = users.find((u) => u.email === cleanEmail || u.id === deterministicId);
-
-    if (!user) {
-      user = {
-        id: deterministicId,
-        username,
-        displayName: cleanName || username,
-        email: cleanEmail,
-        avatar:
-          googleAccount.avatar ||
-          `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(getInitials(cleanName))}&backgroundColor=1ed760&textColor=000000&chars=2`,
-        provider: 'google',
-        createdAt: Date.now(),
-        verified: true,
-      };
-      users.push(user);
-      saveUsersDB(users);
-    } else {
-      user.id = deterministicId;
-      if (cleanName) user.displayName = cleanName;
-      if (googleAccount.avatar) user.avatar = googleAccount.avatar;
-      saveUsersDB(users);
-    }
-
-    saveSession(user);
-    migrateGuestDataToUser(user.id);
-
-    return user;
-  }
-
-  // If called without params, try Supabase OAuth
+export async function signInWithGoogle() {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -429,7 +331,7 @@ export async function signInWithGoogle(googleAccount) {
     }
   }
 
-  throw new Error('Google OAuth credentials not configured.');
+  throw new Error('Google OAuth is not configured on this server. Please sign in with Email & Password.');
 }
 
 /**
@@ -486,60 +388,94 @@ export async function updateProfile(userId, { displayName, avatar }) {
 
 /**
  * Migrate unauthenticated guest data to the user's isolated storage
+ * Supports both active `octav_*` keys and legacy `spotify_liquid_*` / `vetra_*` keys.
  */
 export function migrateGuestDataToUser(userId) {
   if (!userId) return;
 
   try {
     // 1. Liked Tracks
-    const guestLiked = localStorage.getItem('spotify_liquid_liked_tracks');
+    const guestLiked =
+      localStorage.getItem('octav_liked_tracks') ||
+      localStorage.getItem('spotify_liquid_liked_tracks');
     if (guestLiked) {
       const parsedGuest = JSON.parse(guestLiked);
-      const userKey = `octav_user_${userId}_liked_tracks`;
-      const legacyKey = `vetra_user_${userId}_liked_tracks`;
-      const existingUser = localStorage.getItem(userKey) || localStorage.getItem(legacyKey);
-      const parsedUser = existingUser ? JSON.parse(existingUser) : [];
+      if (Array.isArray(parsedGuest) && parsedGuest.length > 0) {
+        const userKey = `octav_user_${userId}_liked_tracks`;
+        const legacyKey = `vetra_user_${userId}_liked_tracks`;
+        const existingUser = localStorage.getItem(userKey) || localStorage.getItem(legacyKey);
+        const parsedUser = existingUser ? JSON.parse(existingUser) : [];
 
-      const existingIds = new Set(parsedUser.map((t) => t.id));
-      const merged = [...parsedUser];
-      parsedGuest.forEach((t) => {
-        if (!existingIds.has(t.id)) {
-          merged.push(t);
-        }
-      });
-      localStorage.setItem(userKey, JSON.stringify(merged));
+        const existingIds = new Set(parsedUser.map((t) => t.id));
+        const merged = [...parsedUser];
+        parsedGuest.forEach((t) => {
+          if (t?.id && !existingIds.has(t.id)) {
+            merged.push(t);
+          }
+        });
+        localStorage.setItem(userKey, JSON.stringify(merged));
+      }
     }
 
     // 2. Custom Playlists
-    const guestPlaylists = localStorage.getItem('spotify_liquid_custom_playlists');
+    const guestPlaylists =
+      localStorage.getItem('octav_guest_custom_playlists') ||
+      localStorage.getItem('spotify_liquid_custom_playlists');
     if (guestPlaylists) {
       const parsedGuest = JSON.parse(guestPlaylists);
-      const userKey = `octav_user_${userId}_custom_playlists`;
-      const legacyKey = `vetra_user_${userId}_custom_playlists`;
-      const existingUser = localStorage.getItem(userKey) || localStorage.getItem(legacyKey);
-      const parsedUser = existingUser ? JSON.parse(existingUser) : [];
+      if (Array.isArray(parsedGuest) && parsedGuest.length > 0) {
+        const userKey = `octav_user_${userId}_custom_playlists`;
+        const legacyKey = `vetra_user_${userId}_custom_playlists`;
+        const existingUser = localStorage.getItem(userKey) || localStorage.getItem(legacyKey);
+        const parsedUser = existingUser ? JSON.parse(existingUser) : [];
 
-      const existingIds = new Set(parsedUser.map((p) => p.id));
-      const merged = [...parsedUser];
-      parsedGuest.forEach((p) => {
-        if (!existingIds.has(p.id)) {
-          merged.push(p);
-        }
-      });
-      localStorage.setItem(userKey, JSON.stringify(merged));
+        const existingIds = new Set(parsedUser.map((p) => p.id));
+        const merged = [...parsedUser];
+        parsedGuest.forEach((p) => {
+          if (p?.id && !existingIds.has(p.id)) {
+            merged.push(p);
+          }
+        });
+        localStorage.setItem(userKey, JSON.stringify(merged));
+      }
     }
 
-    // 3. Followed Artists
-    const guestFollowed = localStorage.getItem('octav_followed_artists') || localStorage.getItem('vetra_followed_artists');
+    // 3. Recently Played
+    const guestRecent =
+      localStorage.getItem('octav_recent_tracks') ||
+      localStorage.getItem('spotify_liquid_recent_tracks');
+    if (guestRecent) {
+      const parsedGuest = JSON.parse(guestRecent);
+      if (Array.isArray(parsedGuest) && parsedGuest.length > 0) {
+        const userKey = `octav_user_${userId}_recent_tracks`;
+        const existingUser = localStorage.getItem(userKey);
+        const parsedUser = existingUser ? JSON.parse(existingUser) : [];
+        const existingIds = new Set(parsedUser.map((t) => t.id));
+        const merged = [...parsedUser];
+        parsedGuest.forEach((t) => {
+          if (t?.id && !existingIds.has(t.id)) {
+            merged.push(t);
+          }
+        });
+        localStorage.setItem(userKey, JSON.stringify(merged.slice(0, 25)));
+      }
+    }
+
+    // 4. Followed Artists
+    const guestFollowed =
+      localStorage.getItem('octav_followed_artists') ||
+      localStorage.getItem('vetra_followed_artists');
     if (guestFollowed) {
       const parsedGuest = JSON.parse(guestFollowed);
-      const userKey = `octav_user_${userId}_followed_artists`;
-      const legacyKey = `vetra_user_${userId}_followed_artists`;
-      const existingUser = localStorage.getItem(userKey) || localStorage.getItem(legacyKey);
-      const parsedUser = existingUser ? JSON.parse(existingUser) : [];
+      if (Array.isArray(parsedGuest) && parsedGuest.length > 0) {
+        const userKey = `octav_user_${userId}_followed_artists`;
+        const legacyKey = `vetra_user_${userId}_followed_artists`;
+        const existingUser = localStorage.getItem(userKey) || localStorage.getItem(legacyKey);
+        const parsedUser = existingUser ? JSON.parse(existingUser) : [];
 
-      const merged = Array.from(new Set([...parsedUser, ...parsedGuest]));
-      localStorage.setItem(userKey, JSON.stringify(merged));
+        const merged = Array.from(new Set([...parsedUser, ...parsedGuest]));
+        localStorage.setItem(userKey, JSON.stringify(merged));
+      }
     }
   } catch (e) {
     console.warn('Guest data migration note:', e);

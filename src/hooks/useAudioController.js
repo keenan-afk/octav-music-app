@@ -11,7 +11,12 @@ import {
   streamCache,
 } from '../services/musicApi';
 import { syncUserDataToCloud, fetchUserDataFromCloud } from '../services/supabaseClient';
-import { recordTrackPlay } from '../services/statsService';
+import {
+  recordTrackPlay,
+  exportCompactStatsForCloud,
+  hydrateStatsFromCloud,
+} from '../services/statsService';
+import { getOfflineTrackUrl } from '../services/offlineCache';
 
 const STORAGE_KEY_LIKED = 'octav_liked_tracks';
 const STORAGE_KEY_RECENT = 'octav_recent_tracks';
@@ -89,7 +94,7 @@ export function useAudioController(user = null, region = 'ID') {
       }
     } catch (e) { }
 
-    // Cloud hydration for liked tracks across devices
+    // Cloud hydration for liked tracks & listening stats across devices
     async function hydrateLikedFromCloud() {
       if (!user?.id) {
         isLikedHydratedRef.current = true;
@@ -98,11 +103,18 @@ export function useAudioController(user = null, region = 'ID') {
 
       try {
         let cloudLiked = user.cloudLibrary?.likedTracks || null;
+        let cloudStats = user.cloudLibrary?.listeningStats || null;
         if (user.isSupabase) {
           const cloudData = await fetchUserDataFromCloud();
           if (cloudData?.likedTracks) {
             cloudLiked = cloudData.likedTracks;
           }
+          if (cloudData?.listeningStats) {
+            cloudStats = cloudData.listeningStats;
+          }
+        }
+        if (!isCancelled && cloudStats) {
+          hydrateStatsFromCloud(user.id, cloudStats);
         }
 
         if (isCancelled) return;
@@ -167,8 +179,35 @@ export function useAudioController(user = null, region = 'ID') {
 
   const audioRef = useRef(null);
   const prefetchAudioRef = useRef(null);
+  const activeBlobUrlRef = useRef(null);
+  const userRef = useRef(user);
+  userRef.current = user;
+  const listeningTrackerRef = useRef({
+    track: null,
+    lastAudioTime: 0,
+    unflushedSeconds: 0,
+    totalTrackSeconds: 0,
+    playCounted: false,
+  });
   const loopRef = useRef({ loopA, loopB, isLooping });
   loopRef.current = { loopA, loopB, isLooping };
+
+  const flushListeningStats = useCallback(() => {
+    const tracker = listeningTrackerRef.current;
+    if (!tracker.track || tracker.unflushedSeconds < 1) return;
+    const secs = tracker.unflushedSeconds;
+    tracker.unflushedSeconds = 0;
+
+    const shouldCountPlay = !tracker.playCounted && tracker.totalTrackSeconds >= 15;
+    if (shouldCountPlay) tracker.playCounted = true;
+
+    const u = userRef.current;
+    recordTrackPlay(tracker.track, secs, u?.id, shouldCountPlay);
+    if (u?.id && u?.isSupabase) {
+      const compact = exportCompactStatsForCloud(u.id);
+      if (compact) syncUserDataToCloud({ listeningStats: compact });
+    }
+  }, []);
 
   // Sync liked tracks to localStorage and Supabase Cloud
   useEffect(() => {
@@ -325,6 +364,7 @@ export function useAudioController(user = null, region = 'ID') {
   // Initialize HTML5 Audio Element
   useEffect(() => {
     const audio = new Audio();
+    audio.crossOrigin = 'anonymous';
     audio.preload = 'auto';
     audio.volume = volume;
     audio.playbackRate = playbackSpeed;
@@ -383,6 +423,20 @@ export function useAudioController(user = null, region = 'ID') {
         const cur = audio.currentTime;
         setCurrentTime(cur);
 
+        // Genuine listening time accumulator (flushes every 10s, marks play after >=15s listened)
+        const tracker = listeningTrackerRef.current;
+        if (tracker.track && !audio.paused) {
+          const dt = cur - tracker.lastAudioTime;
+          if (dt > 0 && dt <= 2.5) {
+            tracker.unflushedSeconds += dt;
+            tracker.totalTrackSeconds += dt;
+            if (tracker.unflushedSeconds >= 10) {
+              flushListeningStats();
+            }
+          }
+          tracker.lastAudioTime = cur;
+        }
+
         // A-B Looper boundary check
         const { loopA, loopB, isLooping } = loopRef.current;
         if (isLooping && loopA !== null && loopB !== null && cur >= loopB) {
@@ -438,7 +492,9 @@ export function useAudioController(user = null, region = 'ID') {
     };
 
     const handleEnded = () => {
+      flushListeningStats();
       if (repeatModeRef.current === 'one') {
+        listeningTrackerRef.current.lastAudioTime = 0;
         audio.currentTime = 0;
         audio.play().catch(() => { });
       } else {
@@ -447,6 +503,7 @@ export function useAudioController(user = null, region = 'ID') {
     };
 
     const handlePause = () => {
+      flushListeningStats();
       if (isManualPauseRef.current) {
         isManualPauseRef.current = false;
         return;
@@ -486,7 +543,14 @@ export function useAudioController(user = null, region = 'ID') {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      flushListeningStats();
       audio.pause();
+      if (activeBlobUrlRef.current) {
+        try {
+          URL.revokeObjectURL(activeBlobUrlRef.current);
+        } catch {}
+        activeBlobUrlRef.current = null;
+      }
       prefetchAudio.src = '';
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('waiting', handleWaiting);
@@ -506,6 +570,7 @@ export function useAudioController(user = null, region = 'ID') {
     const cur = currentTrackRef.current || currentTrack;
     if (!audio || !cur) return;
 
+    audioEqualizer.init(audio);
     audioEqualizer.resume();
 
     // If audio is in error, has no src, or failed: force re-resolve and reload!
@@ -676,7 +741,15 @@ export function useAudioController(user = null, region = 'ID') {
         return [track, ...filtered].slice(0, 25);
       });
 
-      recordTrackPlay(track, 45, user?.id);
+      // Flush previous track listening time before switching
+      flushListeningStats();
+      listeningTrackerRef.current = {
+        track,
+        lastAudioTime: 0,
+        unflushedSeconds: 0,
+        totalTrackSeconds: 0,
+        playCounted: false,
+      };
 
       // Fetch real synced lyrics from LRCLIB concurrently
       fetchSyncedLyrics(
@@ -722,9 +795,27 @@ export function useAudioController(user = null, region = 'ID') {
           ? track.audioUrl
           : '');
 
+      if (audio) {
+        audioEqualizer.init(audio);
+      }
       audioEqualizer.resume();
 
+      // Release previous offline Blob URL if any
+      if (activeBlobUrlRef.current) {
+        try {
+          URL.revokeObjectURL(activeBlobUrlRef.current);
+        } catch {}
+        activeBlobUrlRef.current = null;
+      }
+
       try {
+        if (!targetStreamUrl || track.isOfflineCached || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+          const offlineBlobUrl = await getOfflineTrackUrl(track.id);
+          if (offlineBlobUrl) {
+            activeBlobUrlRef.current = offlineBlobUrl;
+            targetStreamUrl = offlineBlobUrl;
+          }
+        }
         if (!targetStreamUrl) {
           // Generous race timeout: allow 7000ms on user click (never prematurely cut to 30s preview), 3500ms on background transition
           const timeoutMs = fromEnded ? 3500 : 7000;

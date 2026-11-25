@@ -1,8 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Lock, Mail, User, Eye, EyeOff, Sparkles, Loader2, CheckCircle2, ArrowRight } from 'lucide-react';
-import { LiquidSurface } from './LiquidGlassFilter';
+import { X, Lock, Mail, User, Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { GoogleAccountChooserModal } from './GoogleAccountChooserModal';
 import { OctavLogo } from './OctavLogo';
 import gsap from 'gsap';
 
@@ -11,7 +9,6 @@ export function AuthModal({ onShowToast }) {
     isAuthModalOpen,
     closeAuthModal,
     authModalMode,
-    setAuthModalMode,
     signIn,
     signUp,
     signInWithGoogle,
@@ -25,7 +22,6 @@ export function AuthModal({ onShowToast }) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [isGoogleChooserOpen, setIsGoogleChooserOpen] = useState(false);
 
   const modalRef = useRef(null);
   const tabPillRef = useRef(null);
@@ -109,20 +105,18 @@ export function AuthModal({ onShowToast }) {
     setIsLoading(true);
     setErrorMessage('');
     try {
-      // Direct call to real Supabase Google OAuth
       await signInWithGoogle();
     } catch (err) {
       console.warn('Real Google OAuth status:', err);
-      // If provider not enabled yet in Supabase
+      const msg = (err.message || '').toLowerCase();
       if (
-        err.message?.toLowerCase().includes('provider is not enabled') ||
-        err.message?.toLowerCase().includes('not configured') ||
-        err.message?.toLowerCase().includes('validation_failed')
+        msg.includes('provider is not enabled') ||
+        msg.includes('not configured') ||
+        msg.includes('validation_failed')
       ) {
         setErrorMessage(
-          'Login Google belum dapat digunakan saat ini. Silakan gunakan akun tes atau email/password.'
+          'Login Google OAuth belum diaktifkan pada server Supabase. Silakan masuk atau daftar menggunakan Email & Password.'
         );
-        setIsGoogleChooserOpen(true);
       } else {
         setErrorMessage(err.message || 'Google sign in failed.');
       }
@@ -131,42 +125,26 @@ export function AuthModal({ onShowToast }) {
     }
   };
 
-  const handleGoogleSelect = async (account) => {
-    setIsGoogleChooserOpen(false);
-    setIsLoading(true);
-    setErrorMessage('');
-    try {
-      const user = await signInWithGoogle(account);
-      onShowToast?.(`Connected with Google as ${user.displayName}`);
-      closeAuthModal();
-    } catch (err) {
-      setErrorMessage(err.message || 'Google sign in failed.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
-    <>
-      <div className="absolute inset-0 z-[65] flex items-center justify-center p-4 select-none pointer-events-auto">
-        {/* Dimmed backdrop */}
-        <div
-          onClick={closeAuthModal}
-          className="absolute inset-0 bg-black/75 backdrop-blur-xl transition-opacity"
-        />
+    <div className="absolute inset-0 z-[65] flex items-center justify-center p-4 select-none pointer-events-auto">
+      {/* Dimmed backdrop */}
+      <div
+        onClick={closeAuthModal}
+        className="absolute inset-0 bg-black/75 backdrop-blur-xl transition-opacity"
+      />
 
-        {/* Liquid Glass Dialog Card */}
-        <div
-          ref={modalRef}
-          style={{ display: 'none' }}
-          className="relative w-full max-w-[390px] rounded-[36px] p-6 text-white z-10 flex flex-col gap-4 border border-white/20 shadow-[0_25px_60px_rgba(0,0,0,0.9)] overflow-hidden"
-          style={{
-            background: 'linear-gradient(150deg, rgba(24, 24, 32, 0.92) 0%, rgba(10, 10, 14, 0.96) 100%)',
-            backdropFilter: 'blur(32px) saturate(190%) brightness(1.05)',
-            boxShadow:
-              'inset 0 1px 1px 0 rgba(255, 255, 255, 0.45), inset 0 -1px 1px 0 rgba(255, 255, 255, 0.08), 0 30px 80px rgba(0, 0, 0, 0.95)',
-          }}
-        >
+      {/* Liquid Glass Dialog Card */}
+      <div
+        ref={modalRef}
+        className="relative w-full max-w-[390px] rounded-[36px] p-6 text-white z-10 flex flex-col gap-4 border border-white/20 overflow-hidden"
+        style={{
+          display: isAuthModalOpen ? 'flex' : 'none',
+          background: 'linear-gradient(150deg, rgba(24, 24, 32, 0.92) 0%, rgba(10, 10, 14, 0.96) 100%)',
+          backdropFilter: 'blur(32px) saturate(190%) brightness(1.05)',
+          boxShadow:
+            'inset 0 1px 1px 0 rgba(255, 255, 255, 0.45), inset 0 -1px 1px 0 rgba(255, 255, 255, 0.08), 0 30px 80px rgba(0, 0, 0, 0.95)',
+        }}
+      >
           {/* Subtle Ambient Color Glow behind card */}
           <div
             className="absolute -top-16 -left-16 w-48 h-48 rounded-full bg-[#1ed760]/20 blur-3xl pointer-events-none"
@@ -355,25 +333,18 @@ export function AuthModal({ onShowToast }) {
             </button>
           </form>
 
-          {/* Guest Dismissal */}
-          <div className="text-center pt-1">
-            <button
-              onClick={closeAuthModal}
-              className="text-xs text-white/50 hover:text-white transition-colors cursor-pointer"
-            >
-              Continue as Guest
-            </button>
-          </div>
+        <div className="text-center pt-1">
+          <button
+            onClick={closeAuthModal}
+            className="text-xs text-white/50 hover:text-white transition-colors cursor-pointer"
+          >
+            Continue as Guest
+          </button>
         </div>
       </div>
-
-      {/* Google Account Chooser Sub-Modal */}
-      <GoogleAccountChooserModal
-        isOpen={isGoogleChooserOpen}
-        onClose={() => setIsGoogleChooserOpen(false)}
-        onSelectAccount={handleGoogleSelect}
-      />
-    </>
+    </div>
   );
 }
+
+export default AuthModal;
 

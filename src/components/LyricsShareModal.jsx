@@ -367,3 +367,5 @@ export function LyricsShareModal({ isOpen, onClose, currentTrack, onShowToast })
     </div>
   );
 }
+
+export default LyricsShareModal;

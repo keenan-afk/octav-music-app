@@ -183,24 +183,34 @@ export function HomeView({
   const isAcoustic = activeFilter === 'Acoustic';
   const isTrending = activeFilter === 'Trending';
 
-  // Specific filtered track sets
+  // Specific filtered track sets using genuine metadata + artist/genre matching
   const rockTracks = useMemo(() => {
+    const rockKeywords = ['rock', 'metal', 'alternative', 'punk', 'grunge', 'hard rock'];
+    const rockArtists = ['dewa', 'sheila', 'noah', 'peterpan', 'queen', 'nirvana', 'guns n', 'avenged', 'oasis', 'radiohead', 'arctic monkeys', 'coldplay', 'linkin park', 'padi', 'slank', 'kotak', 'gigi'];
     return allTimeHits.filter((h) => {
-      const art = h.artist?.toLowerCase() || '';
-      return art.includes('rock') || art.includes('dewa') || art.includes('sheila') || art.includes('noah');
+      const gen = (h.trackData?.genre || '').toLowerCase();
+      const art = (h.artist || '').toLowerCase();
+      return rockKeywords.some((k) => gen.includes(k)) || rockArtists.some((a) => art.includes(a));
     });
   }, [allTimeHits]);
 
   const indoTracks = useMemo(() => {
-    return allTimeHits.filter((h) => {
-      return region === 'ID';
-    });
+    return region === 'ID' ? allTimeHits : [];
   }, [allTimeHits, region]);
 
   const acousticTracks = useMemo(() => {
+    const acousticKeywords = ['acoustic', 'unplugged', 'folk', 'singer/songwriter', 'indie', 'jazz', 'soul'];
+    const acousticArtists = ['payung teduh', 'tulus', 'fiersa', 'pamungkas', 'hindia', 'feast', 'nadin', 'sal priadi', 'ed sheeran', 'john mayer', 'norah jones'];
     return allTimeHits.filter((h) => {
-      const tit = h.title?.toLowerCase() || '';
-      return tit.includes('acoustic') || tit.includes('dan') || tit.includes('saat') || tit.includes('slow');
+      const gen = (h.trackData?.genre || '').toLowerCase();
+      const tit = (h.title || '').toLowerCase();
+      const art = (h.artist || '').toLowerCase();
+      return (
+        tit.includes('acoustic') ||
+        tit.includes('unplugged') ||
+        acousticKeywords.some((k) => gen.includes(k)) ||
+        acousticArtists.some((a) => art.includes(a))
+      );
     });
   }, [allTimeHits]);
 

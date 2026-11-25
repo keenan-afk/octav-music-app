@@ -12,7 +12,10 @@ import gsap from 'gsap';
 export function Toast({ toast, onDismiss }) {
   const toastRef = useRef(null);
   const onDismissRef = useRef(onDismiss);
-  onDismissRef.current = onDismiss;
+
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+  }, [onDismiss]);
 
   useEffect(() => {
     if (!toast?.message) return;

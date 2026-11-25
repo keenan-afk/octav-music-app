@@ -104,54 +104,7 @@ export function getListeningStats(userId, period = 'current-month') {
     }
   } catch (e) {}
 
-  // 3. Fallback dynamically to recent tracks session if stats not yet stored
-  let recentList = [];
-  try {
-    const recentKey = userId ? `octav_user_${userId}_recent_tracks` : 'octav_recent_tracks';
-    const recentRaw = localStorage.getItem(recentKey) || localStorage.getItem('spotify_liquid_recent_tracks');
-    if (recentRaw) recentList = JSON.parse(recentRaw);
-  } catch {}
-
-  if (Array.isArray(recentList) && recentList.length > 0) {
-    const tracks = {};
-    const artists = {};
-    const hourly = {};
-    let totalSec = 0;
-
-    recentList.forEach((t, i) => {
-      if (!t || !t.title) return;
-      const tKey = t.id || `${t.title}_${t.artist}`;
-      const plays = Math.max(1, 4 - Math.floor(i / 2));
-      const secs = plays * (t.duration || 210);
-      totalSec += secs;
-      tracks[tKey] = {
-        id: t.id,
-        title: t.title,
-        artist: t.artist,
-        cover: t.cover,
-        plays,
-        seconds: secs,
-      };
-      const art = t.artist || 'Unknown Artist';
-      if (!artists[art]) artists[art] = { name: art, plays: 0 };
-      artists[art].plays += plays;
-
-      // Distribute hours realistically based on index
-      const simulatedHour = (22 + i) % 24;
-      hourly[simulatedHour] = (hourly[simulatedHour] || 0) + plays;
-    });
-
-    return {
-      totalSeconds: totalSec,
-      playsCount: recentList.length,
-      tracks,
-      artists,
-      hourlyDistribution: hourly,
-      period: resolvedPeriod,
-    };
-  }
-
-  // Pure zero-state default
+  // Pure zero-state default (never invent fake plays or simulated hourly distributions)
   return {
     totalSeconds: 0,
     playsCount: 0,
@@ -162,12 +115,13 @@ export function getListeningStats(userId, period = 'current-month') {
   };
 }
 
-function updateStatsObject(stats, track, secondsListened, hour) {
-  stats.totalSeconds = (stats.totalSeconds || 0) + Math.round(secondsListened);
-  stats.playsCount = (stats.playsCount || 0) + 1;
-
-  if (!stats.hourlyDistribution) stats.hourlyDistribution = {};
-  stats.hourlyDistribution[hour] = (stats.hourlyDistribution[hour] || 0) + 1;
+function updateStatsObject(stats, track, secondsListened, hour, incrementPlayCount = true) {
+  stats.totalSeconds = (stats.totalSeconds || 0) + Math.max(0, Math.round(secondsListened));
+  if (incrementPlayCount) {
+    stats.playsCount = (stats.playsCount || 0) + 1;
+    if (!stats.hourlyDistribution) stats.hourlyDistribution = {};
+    stats.hourlyDistribution[hour] = (stats.hourlyDistribution[hour] || 0) + 1;
+  }
 
   // Track map
   if (!stats.tracks) stats.tracks = {};
@@ -182,8 +136,10 @@ function updateStatsObject(stats, track, secondsListened, hour) {
       seconds: 0,
     };
   }
-  stats.tracks[trackKey].plays += 1;
-  stats.tracks[trackKey].seconds += Math.round(secondsListened);
+  if (incrementPlayCount) {
+    stats.tracks[trackKey].plays += 1;
+  }
+  stats.tracks[trackKey].seconds += Math.max(0, Math.round(secondsListened));
 
   // Artist map
   if (!stats.artists) stats.artists = {};
@@ -191,11 +147,14 @@ function updateStatsObject(stats, track, secondsListened, hour) {
   if (!stats.artists[artistKey]) {
     stats.artists[artistKey] = { name: artistKey, plays: 0 };
   }
-  stats.artists[artistKey].plays += 1;
+  if (incrementPlayCount) {
+    stats.artists[artistKey].plays += 1;
+  }
 }
 
-export function recordTrackPlay(track, secondsListened = 30, userId = null) {
+export function recordTrackPlay(track, secondsListened = 0, userId = null, incrementPlayCount = true) {
   if (!track || !track.title) return;
+  if (secondsListened <= 0 && !incrementPlayCount) return;
 
   try {
     const { monthKey, yearKey, currentHour } = getCurrentPeriodKeys();
@@ -211,12 +170,56 @@ export function recordTrackPlay(track, secondsListened = 30, userId = null) {
         targetStats = { totalSeconds: 0, playsCount: 0, tracks: {}, artists: {}, hourlyDistribution: {} };
       }
 
-      updateStatsObject(targetStats, track, secondsListened, currentHour);
+      updateStatsObject(targetStats, track, secondsListened, currentHour, incrementPlayCount);
       localStorage.setItem(key, JSON.stringify(targetStats));
     });
   } catch (err) {
     console.warn('Failed to record track play stats:', err);
   }
+}
+
+export function exportCompactStatsForCloud(userId = null) {
+  try {
+    const { monthKey } = getCurrentPeriodKeys();
+    const rawAll = localStorage.getItem(getStatsStorageKey(userId, 'all'));
+    const rawMonth = localStorage.getItem(getStatsStorageKey(userId, monthKey));
+    const allStats = rawAll ? JSON.parse(rawAll) : null;
+    const monthStats = rawMonth ? JSON.parse(rawMonth) : null;
+
+    const trimTracks = (map) => {
+      if (!map || typeof map !== 'object') return {};
+      return Object.fromEntries(
+        Object.entries(map)
+          .sort((a, b) => (b[1].seconds || 0) - (a[1].seconds || 0))
+          .slice(0, 12)
+      );
+    };
+
+    return {
+      monthKey,
+      all: allStats ? { ...allStats, tracks: trimTracks(allStats.tracks) } : null,
+      month: monthStats ? { ...monthStats, tracks: trimTracks(monthStats.tracks) } : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function hydrateStatsFromCloud(userId, cloudStats) {
+  if (!userId || !cloudStats) return;
+  try {
+    const mergeStore = (period, incoming) => {
+      if (!incoming) return;
+      const key = getStatsStorageKey(userId, period);
+      const existingRaw = localStorage.getItem(key);
+      const existing = existingRaw ? JSON.parse(existingRaw) : null;
+      if (!existing || (incoming.totalSeconds || 0) > (existing.totalSeconds || 0)) {
+        localStorage.setItem(key, JSON.stringify(incoming));
+      }
+    };
+    if (cloudStats.all) mergeStore('all', cloudStats.all);
+    if (cloudStats.month && cloudStats.monthKey) mergeStore(cloudStats.monthKey, cloudStats.month);
+  } catch {}
 }
 
 /**

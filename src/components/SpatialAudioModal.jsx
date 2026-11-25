@@ -14,16 +14,24 @@ import { audioEqualizer } from '../services/audioEqualizer';
  * - Live animated visualizer spectrum
  */
 export function SpatialAudioModal({ isOpen, onClose, isPlaying }) {
-  const [isSpatialEnabled, setIsSpatialEnabled] = useState(true);
-  const [spatialMode, setSpatialMode] = useState('vision');
-  const [activePreset, setActivePreset] = useState('visionSpatial');
-  const [bands, setBands] = useState({
-    sub: 4,
-    bass: 2,
-    mid: 1,
-    highMid: 3,
-    treble: 5,
-  });
+  const [isSpatialEnabled, setIsSpatialEnabled] = useState(
+    () => audioEqualizer.getSpatialSettings().isSpatialEnabled
+  );
+  const [spatialMode, setSpatialMode] = useState(
+    () => audioEqualizer.getSpatialSettings().spatialMode
+  );
+  const [activePreset, setActivePreset] = useState(() => audioEqualizer.getActivePreset());
+  const [bands, setBands] = useState(() => audioEqualizer.getBandValues());
+
+  useEffect(() => {
+    if (isOpen) {
+      const s = audioEqualizer.getSpatialSettings();
+      setIsSpatialEnabled(s.isSpatialEnabled);
+      setSpatialMode(s.spatialMode);
+      setActivePreset(audioEqualizer.getActivePreset());
+      setBands(audioEqualizer.getBandValues());
+    }
+  }, [isOpen]);
 
   const [spectrum, setSpectrum] = useState([35, 60, 45, 80, 50, 75, 40]);
   const animFrameRef = useRef(null);
@@ -93,20 +101,9 @@ export function SpatialAudioModal({ isOpen, onClose, isPlaying }) {
   };
 
   const handlePresetSelect = (presetKey) => {
-    setActivePreset(presetKey);
-    audioEqualizer.applyPreset(presetKey);
-
-    const presets = {
-      flat: { sub: 0, bass: 0, mid: 0, highMid: 0, treble: 0 },
-      bassBoost: { sub: 6, bass: 4, mid: 0, highMid: -1, treble: -2 },
-      vocal: { sub: -2, bass: 0, mid: 3, highMid: 4, treble: 2 },
-      electronic: { sub: 5, bass: 3, mid: -1, highMid: 2, treble: 5 },
-      acoustic: { sub: 2, bass: 1, mid: 2, highMid: 2, treble: 4 },
-      visionSpatial: { sub: 4, bass: 2, mid: 1, highMid: 3, treble: 5 },
-    };
-    if (presets[presetKey]) {
-      setBands(presets[presetKey]);
-    }
+    const preset = audioEqualizer.applyPreset(presetKey);
+    setActivePreset(preset.id);
+    setBands(preset.values);
   };
 
   const bandConfigs = [
@@ -129,7 +126,9 @@ export function SpatialAudioModal({ isOpen, onClose, isPlaying }) {
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md select-none animate-in fade-in duration-200">
       <LiquidSurface
-        className="w-full max-w-[380px] p-5 rounded-3xl"
+        rounded="rounded-3xl"
+        className="w-full max-w-[380px]"
+        contentClassName="p-5"
         style={{
           background:
             'linear-gradient(145deg, rgba(24, 24, 32, 0.88) 0%, rgba(12, 12, 18, 0.8) 100%)',

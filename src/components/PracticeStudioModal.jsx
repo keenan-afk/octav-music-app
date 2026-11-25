@@ -661,3 +661,5 @@ export function PracticeStudioModal({
     </div>
   );
 }
+
+export default PracticeStudioModal;

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Search, Plus, ArrowDownUp, Pin, Heart, Clock, Play, ListMusic, User, Disc } from 'lucide-react';
 import { SmartArtwork } from './SmartArtwork';
 import { useAuth } from '../context/AuthContext';
+import { getDownloadedPlaylists } from '../services/offlineCache';
 
 /**
  * Spotify iOS 1:1 Your Library View
@@ -18,9 +19,11 @@ export function LibraryView({
   customPlaylists = [],
   likedTracks = [],
   recentlyPlayed = [],
+  followedArtists = [],
   currentTrack,
   isPlaying,
   onOpenPlaylist,
+  onOpenArtist,
   onSelectTrack,
   onOpenCreatePlaylist,
   onProfileClick,
@@ -57,9 +60,22 @@ export function LibraryView({
     ];
   }, [customPlaylists, playlists]);
 
-  // Unique artists from liked tracks & playlists
+  // Unique artists from followed artists + liked tracks
   const artistsList = useMemo(() => {
     const map = new Map();
+    followedArtists.forEach((name) => {
+      if (name && !map.has(name)) {
+        const matchedTrack = likedTracks.find((t) => t.artist === name);
+        map.set(name, {
+          id: `artist-${name}`,
+          title: name,
+          subtitle: 'Following • Artist',
+          cover: matchedTrack?.cover || '',
+          isArtistItem: true,
+          artistName: name,
+        });
+      }
+    });
     [...likedTracks, ...(playlists.flatMap((p) => p.tracks || []))].forEach((t) => {
       if (t?.artist && !map.has(t.artist)) {
         map.set(t.artist, {
@@ -67,12 +83,14 @@ export function LibraryView({
           title: t.artist,
           subtitle: 'Artist',
           cover: t.cover,
+          isArtistItem: true,
+          artistName: t.artist,
           tracks: [t],
         });
       }
     });
     return Array.from(map.values());
-  }, [likedTracks, playlists]);
+  }, [followedArtists, likedTracks, playlists]);
 
   // Filtered display items based on capsule and search
   const displayedItems = useMemo(() => {
@@ -84,8 +102,8 @@ export function LibraryView({
     } else if (activeFilter === 'Albums') {
       items = playlists;
     } else {
-      // Downloaded
-      items = allPlaylists.slice(0, 2);
+      // Downloaded: strictly show genuinely cached offline playlists
+      items = getDownloadedPlaylists();
     }
 
     if (!searchQuery.trim()) return items;
@@ -226,7 +244,13 @@ export function LibraryView({
         {displayedItems.map((item) => (
           <div
             key={item.id}
-            onClick={() => onOpenPlaylist(item)}
+            onClick={() => {
+              if (item.isArtistItem) {
+                onOpenArtist?.(item.artistName || item.title);
+              } else {
+                onOpenPlaylist(item);
+              }
+            }}
             className="flex items-center justify-between p-2 rounded-xl hover:bg-white/[0.06] active:scale-[0.99] transition-all cursor-pointer group"
           >
             <div className="flex items-center gap-3 min-w-0">
@@ -243,8 +267,10 @@ export function LibraryView({
                 <SmartArtwork
                   src={item.cover}
                   title={item.title}
-                  artist={item.curator || item.subtitle}
-                  className="w-12 h-12 rounded-lg object-cover flex-shrink-0 border border-white/[0.06] shadow-sm"
+                  artist={item.isArtistItem ? (item.artistName || item.title) : (item.curator || item.subtitle)}
+                  isArtist={Boolean(item.isArtistItem)}
+                  rounded={item.isArtistItem ? 'rounded-full' : 'rounded-lg'}
+                  className={`w-12 h-12 ${item.isArtistItem ? 'rounded-full' : 'rounded-lg'} object-cover flex-shrink-0 border border-white/[0.06] shadow-sm`}
                   alt={item.title}
                 />
               )}
@@ -262,22 +288,36 @@ export function LibraryView({
           </div>
         ))}
 
-        {/* Empty state when no custom playlists */}
+        {/* Empty state when current filter has no items */}
         {displayedItems.length === 0 && !searchQuery && (
           <div className="py-10 px-4 text-center flex flex-col items-center justify-center">
             <div className="w-12 h-12 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center mb-3">
               <Plus className="w-6 h-6 text-white/40" />
             </div>
-            <h4 className="text-sm font-bold text-white mb-1">Your library is empty</h4>
-            <p className="text-xs text-white/50 max-w-[240px] mb-4">
-              Create your first playlist to organize your favorite songs on Octav.
+            <h4 className="text-sm font-bold text-white mb-1">
+              {activeFilter === 'Downloaded'
+                ? 'No offline downloads yet'
+                : activeFilter === 'Artists'
+                ? 'No artists followed or saved yet'
+                : activeFilter === 'Albums'
+                ? 'No saved albums yet'
+                : 'Your library is empty'}
+            </h4>
+            <p className="text-xs text-white/50 max-w-[250px] mb-4">
+              {activeFilter === 'Downloaded'
+                ? 'Open any playlist and tap the download button to save songs for offline playback.'
+                : activeFilter === 'Artists'
+                ? 'Follow artists or save tracks to see them collected here.'
+                : 'Create your first playlist to organize your favorite songs on Octav.'}
             </p>
-            <button
-              onClick={onOpenCreatePlaylist}
-              className="px-4 py-2 rounded-full bg-white text-black text-xs font-bold hover:scale-105 active:scale-95 transition-transform cursor-pointer"
-            >
-              + Create Playlist
-            </button>
+            {activeFilter === 'Playlists' && (
+              <button
+                onClick={onOpenCreatePlaylist}
+                className="px-4 py-2 rounded-full bg-white text-black text-xs font-bold hover:scale-105 active:scale-95 transition-transform cursor-pointer"
+              >
+                + Create Playlist
+              </button>
+            )}
           </div>
         )}
 

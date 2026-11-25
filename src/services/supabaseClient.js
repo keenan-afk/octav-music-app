@@ -31,36 +31,86 @@ export const supabase = isSupabaseConfigured
     })
   : null;
 
+function compactTrack(track) {
+  if (!track || typeof track !== 'object') return null;
+  return {
+    id: track.id,
+    title: track.title || '',
+    artist: track.artist || '',
+    album: track.album || '',
+    duration: Number(track.duration || 0),
+    durationFormatted: track.durationFormatted || '',
+    cover: typeof track.cover === 'string' && !track.cover.startsWith('data:') ? track.cover : '',
+    releaseYear: track.releaseYear,
+    artistId: track.artistId,
+    collectionId: track.collectionId,
+    genre: track.genre,
+    source: track.source || 'itunes',
+  };
+}
+
+function compactPlaylist(pl) {
+  if (!pl || typeof pl !== 'object') return null;
+  return {
+    id: pl.id,
+    title: pl.title || 'Playlist',
+    description: pl.description || '',
+    curator: pl.curator || 'You',
+    isCustom: Boolean(pl.isCustom),
+    createdAt: pl.createdAt,
+    // Strip huge base64 custom covers from auth JWT metadata; remote URLs stay
+    cover: typeof pl.cover === 'string' && !pl.cover.startsWith('data:') ? pl.cover : '',
+    tracks: Array.isArray(pl.tracks) ? pl.tracks.slice(0, 60).map(compactTrack).filter(Boolean) : [],
+  };
+}
+
+let pendingSyncData = {};
+let syncDebounceTimer = null;
+
 /**
- * Sync user's music library (liked tracks, playlists, followed artists) to Supabase Cloud
+ * Sync user's music library (liked tracks, playlists, followed artists, listening stats) to Supabase Cloud.
+ * Strips heavy lyrics/data-URI blobs to keep Supabase user_metadata compact and debounces concurrent calls.
  */
-export async function syncUserDataToCloud({ likedTracks, customPlaylists, followedArtists }) {
+export async function syncUserDataToCloud({ likedTracks, customPlaylists, followedArtists, listeningStats }) {
   if (!supabase) return { success: false, reason: 'not_configured' };
 
-  try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) return { success: false, error: userError };
-
-    const updatePayload = {
-      data: {
-        ...(likedTracks !== undefined ? { likedTracks: likedTracks.slice(0, 100) } : {}),
-        ...(customPlaylists !== undefined ? { customPlaylists: customPlaylists.slice(0, 50) } : {}),
-        ...(followedArtists !== undefined ? { followedArtists: followedArtists.slice(0, 50) } : {}),
-        lastSyncedAt: Date.now(),
-      },
-    };
-
-    const { data, error } = await supabase.auth.updateUser(updatePayload);
-    if (error) {
-      console.warn('Supabase cloud sync warning:', error.message);
-      return { success: false, error };
-    }
-
-    return { success: true, data };
-  } catch (err) {
-    console.warn('Supabase cloud sync exception:', err);
-    return { success: false, error: err };
+  if (likedTracks !== undefined) {
+    pendingSyncData.likedTracks = likedTracks.slice(0, 100).map(compactTrack).filter(Boolean);
   }
+  if (customPlaylists !== undefined) {
+    pendingSyncData.customPlaylists = customPlaylists.slice(0, 50).map(compactPlaylist).filter(Boolean);
+  }
+  if (followedArtists !== undefined) {
+    pendingSyncData.followedArtists = followedArtists.slice(0, 50);
+  }
+  if (listeningStats !== undefined) {
+    pendingSyncData.listeningStats = listeningStats;
+  }
+
+  return new Promise((resolve) => {
+    if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+    syncDebounceTimer = setTimeout(async () => {
+      const batch = { ...pendingSyncData, lastSyncedAt: Date.now() };
+      pendingSyncData = {};
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError || !user) {
+          resolve({ success: false, error: userError });
+          return;
+        }
+        const { data, error } = await supabase.auth.updateUser({ data: batch });
+        if (error) {
+          console.warn('Supabase cloud sync warning:', error.message);
+          resolve({ success: false, error });
+          return;
+        }
+        resolve({ success: true, data });
+      } catch (err) {
+        console.warn('Supabase cloud sync exception:', err);
+        resolve({ success: false, error: err });
+      }
+    }, 450);
+  });
 }
 
 /**
@@ -73,6 +123,7 @@ export function extractCloudLibrary(user) {
     likedTracks: Array.isArray(meta.likedTracks) ? meta.likedTracks : null,
     customPlaylists: Array.isArray(meta.customPlaylists) ? meta.customPlaylists : null,
     followedArtists: Array.isArray(meta.followedArtists) ? meta.followedArtists : null,
+    listeningStats: meta.listeningStats || null,
     lastSyncedAt: meta.lastSyncedAt || null,
   };
 }

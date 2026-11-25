@@ -65,6 +65,8 @@ export function NowPlayingSheet({
   formatTime,
   formatRemainingTime,
   activePlaylistTitle = 'Now Playing',
+  isFollowingArtist,
+  onToggleFollowArtist,
 }) {
   const sheetRef = useRef(null);
   const coverRef = useRef(null);
@@ -72,8 +74,8 @@ export function NowPlayingSheet({
   const progressBarRef = useRef(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubValue, setScrubValue] = useState(0);
-  const [isFollowing, setIsFollowing] = useState(false);
   const lyricsScrollRef = useRef(null);
+  const isFollowing = isFollowingArtist ? isFollowingArtist(currentTrack?.artist) : false;
 
   const activeOpen = Boolean(isOpen ?? isExpanded);
 
@@ -586,14 +588,16 @@ export function NowPlayingSheet({
                 <div>
                   <h3 className="text-sm font-extrabold text-white group-hover:text-[#1ed760] transition-colors">{currentTrack?.artist}</h3>
                   <p className="text-xs text-white/50 font-medium">
-                    {currentTrack?.monthlyListeners || '3,410,200'} monthly listeners
+                    {currentTrack?.genre || 'Artist Catalog'}
                   </p>
                 </div>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setIsFollowing((prev) => !prev);
-                    onShowToast?.(!isFollowing ? `Followed ${currentTrack?.artist}` : `Unfollowed ${currentTrack?.artist}`);
+                    const nowFollowing = onToggleFollowArtist?.(currentTrack?.artist);
+                    onShowToast?.(
+                      nowFollowing ? `Following ${currentTrack?.artist}` : `Unfollowed ${currentTrack?.artist}`
+                    );
                   }}
                   className={`px-3.5 py-1 text-xs font-bold rounded-full border transition-all cursor-pointer ${
                     isFollowing
