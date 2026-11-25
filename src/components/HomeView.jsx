@@ -25,6 +25,7 @@ export function HomeView({
   likedTracks = [],
   recentlyPlayed = [],
   onSelectTrack,
+  onTogglePlayPause,
   onOpenPlaylist,
   onProfileClick,
   onShowToast,

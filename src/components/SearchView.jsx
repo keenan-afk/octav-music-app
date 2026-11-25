@@ -34,6 +34,7 @@ export function SearchView({
   isPlaying,
   likedTrackIds,
   onSelectTrack,
+  onTogglePlayPause,
   onToggleLike,
   onOpenPlaylist,
   onOpenActionSheet,

@@ -40,7 +40,6 @@ export function App() {
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSpatialModalOpen, setIsSpatialModalOpen] = useState(false);
-  const [homeTracks, setHomeTracks] = useState([]);
 
   // Artist Discography Sheet
   const [selectedArtist, setSelectedArtist] = useState(null);
@@ -160,24 +159,6 @@ export function App() {
     return 'Good evening';
   }, []);
 
-  // Real Home Feed Initialization with Region-Aware Rotation
-  useEffect(() => {
-    let isMounted = true;
-    fetchHomeFeed(region)
-      .then((tracks) => {
-        if (isMounted && tracks.length > 0) {
-          setHomeTracks(tracks);
-        }
-      })
-      .catch((e) => {
-        console.warn('Home feed fetch fallback:', e);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [region]);
-
   const handleOpenPlaylist = (playlist) => {
     setSelectedPlaylist(playlist);
   };
@@ -242,7 +223,7 @@ export function App() {
                 onTogglePlayPause={audio.togglePlayPause}
                 likedTrackIds={audio.likedTrackIds}
                 onToggleLike={audio.toggleLike}
-                tracks={currentActivePlaylist.tracks || homeTracks}
+                tracks={currentActivePlaylist.tracks || []}
                 onOpenActionSheet={openActionSheet}
                 onDeletePlaylist={playlistsManager.deletePlaylist}
                 onRemoveTrackFromPlaylist={playlistsManager.removeTrackFromPlaylist}
@@ -274,6 +255,7 @@ export function App() {
                 isPlaying={audio.isPlaying}
                 likedTrackIds={audio.likedTrackIds}
                 onSelectTrack={audio.playTrack}
+                onTogglePlayPause={audio.togglePlayPause}
                 onToggleLike={audio.toggleLike}
                 onOpenPlaylist={handleOpenPlaylist}
                 onOpenActionSheet={openActionSheet}
@@ -305,6 +287,7 @@ export function App() {
                 likedTracks={audio.likedTracks}
                 recentlyPlayed={audio.recentlyPlayed}
                 onSelectTrack={audio.playTrack}
+                onTogglePlayPause={audio.togglePlayPause}
                 onOpenPlaylist={handleOpenPlaylist}
                 onProfileClick={() => setIsProfileDrawerOpen(true)}
                 onShowToast={showToast}
