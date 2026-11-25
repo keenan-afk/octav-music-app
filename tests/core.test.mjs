@@ -20,6 +20,7 @@ const {
   cleanSearchQuery,
   isArtistStrictMatch,
   isCompilationOrKaraoke,
+  isValidDecryptedStreamUrl,
   streamCache,
 } = await import('../src/services/musicApi.js');
 
@@ -69,9 +70,12 @@ test('musicApi rejects nature sounds, covers, and unrelated artist matches', () 
   assert.equal(cleaned.cleanArtist, 'Sheila On 7');
 });
 
-test('musicApi streamCache stores and retrieves URLs cleanly', () => {
-  streamCache.set('dan__sheila on 7', 'https://aac.saavncdn.com/test.mp4');
-  assert.equal(streamCache.get('dan__sheila on 7'), 'https://aac.saavncdn.com/test.mp4');
+test('musicApi streamCache stores URLs and rejects broken undecrypted 404 CDN links', () => {
+  streamCache.set('dan__sheila on 7', 'https://aac.saavncdn.com/015/7c65d7755d290a85a4b9a1234567890a_320.mp4');
+  assert.equal(streamCache.get('dan__sheila on 7'), 'https://aac.saavncdn.com/015/7c65d7755d290a85a4b9a1234567890a_320.mp4');
+
+  assert.equal(isValidDecryptedStreamUrl('https://aac.saavncdn.com/446/IXxDbSSolNIFI3TaYkJJN_320.mp4'), false);
+  assert.equal(isValidDecryptedStreamUrl('https://aac.saavncdn.com/015/7c65d7755d290a85a4b9a1234567890a_320.mp4'), true);
 });
 
 test('authService migrates active octav guest data and blocks fake Google bypass', async () => {

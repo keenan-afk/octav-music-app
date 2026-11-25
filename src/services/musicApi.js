@@ -310,6 +310,16 @@ export function cleanSearchQuery(title = '', artist = '') {
   return { cleanTitle: cleanTitle || title, cleanArtist: cleanArtist || artist };
 }
 
+export function isValidDecryptedStreamUrl(url = '') {
+  if (!url || typeof url !== 'string') return false;
+  if (!url.startsWith('http')) return false;
+  if (url.includes('saavncdn.com')) {
+    // Valid JioSaavn CDN paths always use a 32-char lowercase hex hash, never mixed-case encrypted base64
+    return /\/[0-9a-f]{32}(?:_\d+)?\.(?:mp4|mp3|m4a)(?:\?|$)/i.test(url) && !/[A-Z]/.test(url.split('/').pop().split('_')[0]);
+  }
+  return true;
+}
+
 /**
  * 3-Tier Multi-Engine Full-Length Audio Stream Resolver
  * High-speed concurrent mirror resolution (320kbps / 160kbps full streams)
@@ -326,13 +336,10 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
     return streamCache.get(rawKey);
   }
 
-  // Active High-Speed JioSaavn Mirror Resolvers with respective query param syntax
+  // Verified 200 OK JioSaavn Mirror Resolvers with valid decrypted CDN links
   const mirrorEndpoints = [
     (q) => `https://jiosaavn-api-private.vercel.app/search/songs?q=${encodeURIComponent(q)}&limit=12`,
-    (q) => `https://saavn.me/search/songs?query=${encodeURIComponent(q)}&limit=12`,
-    (q) => `https://jiosaavn-api-2.vercel.app/search/songs?query=${encodeURIComponent(q)}&limit=12`,
     (q) => `https://jiosaavn-api-taupe.vercel.app/search/songs?query=${encodeURIComponent(q)}&limit=12`,
-    (q) => `https://jiosaavn-api-unofficial.vercel.app/search/songs?query=${encodeURIComponent(q)}&limit=12`,
   ];
 
   const normTitle = cleanTitle.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -379,7 +386,7 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
     if (candidateSongs.length > 0) {
       const cleanT = normTitle.toLowerCase();
 
-      const match = candidateSongs.find((s) => {
+      const matches = candidateSongs.filter((s) => {
         const dur = Number(s.duration || 0);
         if (dur < 40) return false;
 
@@ -417,35 +424,33 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
         return titleMatch && artistMatch;
       });
 
-      const selectedSong = match;
+      let qualityPref = '320kbps';
+      try {
+        qualityPref = localStorage.getItem('octav_audio_quality') || '320kbps';
+      } catch {}
 
-      if (selectedSong) {
+      for (const selectedSong of matches) {
         const downloadList = selectedSong.downloadUrl || selectedSong.download_url || [];
-        if (Array.isArray(downloadList) && downloadList.length > 0) {
-          let qualityPref = '320kbps';
-          try {
-            qualityPref = localStorage.getItem('octav_audio_quality') || '320kbps';
-          } catch {}
+        if (!Array.isArray(downloadList) || downloadList.length === 0) continue;
 
-          let best = null;
-          if (qualityPref.includes('96kbps')) {
-            best =
-              downloadList.find((d) => d.quality === '96kbps') ||
-              downloadList.find((d) => d.quality === '160kbps') ||
-              downloadList[0];
-          } else {
-            best =
-              downloadList.find((d) => d.quality === '320kbps') ||
-              downloadList.find((d) => d.quality === '160kbps') ||
-              downloadList[downloadList.length - 1];
-          }
+        let best = null;
+        if (qualityPref.includes('96kbps')) {
+          best =
+            downloadList.find((d) => d.quality === '96kbps') ||
+            downloadList.find((d) => d.quality === '160kbps') ||
+            downloadList[0];
+        } else {
+          best =
+            downloadList.find((d) => d.quality === '320kbps') ||
+            downloadList.find((d) => d.quality === '160kbps') ||
+            downloadList[downloadList.length - 1];
+        }
 
-          const resolved = best?.link || best?.url;
-          if (resolved) {
-            streamCache.set(cacheKey, resolved);
-            streamCache.set(rawKey, resolved);
-            return resolved;
-          }
+        const resolved = best?.link || best?.url;
+        if (isValidDecryptedStreamUrl(resolved)) {
+          streamCache.set(cacheKey, resolved);
+          streamCache.set(rawKey, resolved);
+          return resolved;
         }
       }
     }

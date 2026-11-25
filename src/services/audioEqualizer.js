@@ -209,6 +209,15 @@ class AudioEqualizerEngine {
       this.analyser.connect(this.ctx.destination);
 
       this._updateSpatialMix();
+      this.ctx.onstatechange = () => {
+        if (
+          (this.ctx?.state === 'suspended' || this.ctx?.state === 'interrupted') &&
+          this.audioElement &&
+          !this.audioElement.paused
+        ) {
+          this.ctx.resume().catch(() => {});
+        }
+      };
       this.isInitialized = true;
     } catch (e) {
       console.warn('Web Audio Equalizer initialization warning:', e.message);

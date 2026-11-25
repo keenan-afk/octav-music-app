@@ -520,8 +520,22 @@ export function useAudioController(user = null, region = 'ID') {
       }
     };
 
+    let retriedErrorTrackId = null;
     const handleError = () => {
       console.warn('Audio playback error encountered on stream URL:', audio.src);
+      const cur = currentTrackRef.current;
+      if (cur) {
+        streamCache.delete(getTrackKey(cur));
+        if (retriedErrorTrackId !== cur.id && cur.previewUrl && audio.src !== cur.previewUrl) {
+          retriedErrorTrackId = cur.id;
+          audio.src = cur.previewUrl;
+          audio.play().catch(() => {
+            setIsLoading(false);
+            setIsPlaying(false);
+          });
+          return;
+        }
+      }
       setIsLoading(false);
       setIsPlaying(false);
     };
