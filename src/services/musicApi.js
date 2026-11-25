@@ -336,8 +336,11 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
     return streamCache.get(rawKey);
   }
 
-  // Verified 200 OK JioSaavn Mirror Resolvers with valid decrypted CDN links
+  // First-party Vercel Serverless resolver (with Edge cache) + verified fallback mirrors
   const mirrorEndpoints = [
+    ...(typeof window !== 'undefined' && !['localhost', '127.0.0.1'].includes(window.location.hostname)
+      ? [(q) => `/api/resolve-stream?q=${encodeURIComponent(q)}&limit=12`]
+      : []),
     (q) => `https://jiosaavn-api-private.vercel.app/search/songs?q=${encodeURIComponent(q)}&limit=12`,
     (q) => `https://jiosaavn-api-taupe.vercel.app/search/songs?query=${encodeURIComponent(q)}&limit=12`,
   ];
@@ -358,13 +361,16 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
     .map((w) => w.trim())
     .filter((w) => w.length >= 3 && !['the', 'and', 'band'].includes(w));
 
-  // Concurrently query mirrors across candidate queries
+  // Concurrently query resolvers across candidate queries
   const fetchTasks = [];
   for (const q of distinctQueries) {
     for (const getEndpoint of mirrorEndpoints) {
       fetchTasks.push(
         fetch(getEndpoint(q), { signal: safeTimeoutSignal(6000) })
-          .then((r) => (r.ok ? r.json() : null))
+          .then((r) => {
+            const ct = r.headers.get('content-type') || '';
+            return r.ok && ct.includes('application/json') ? r.json() : null;
+          })
           .then((json) => {
             if (!json) return [];
             return json.data?.results || json.results || [];

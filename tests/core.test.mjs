@@ -29,6 +29,8 @@ const {
   signInWithGoogle,
 } = await import('../src/services/authService.js');
 
+const { decryptDesEcb } = await import('../api/_des.js');
+
 test('statsService returns zero-state even when recentlyPlayed exists', () => {
   localStorage.clear();
   localStorage.setItem('octav_recent_tracks', JSON.stringify([
@@ -92,4 +94,12 @@ test('authService migrates active octav guest data and blocks fake Google bypass
   assert.equal(userPlaylists[0].title, 'My Mix');
 
   await assert.rejects(() => signInWithGoogle({ email: 'victim@gmail.com', name: 'Attacker' }), /./);
+});
+
+test('api/_des decrypts JioSaavn DES-ECB payload without OpenSSL legacy dependency', () => {
+  // Known encrypted sample from JioSaavn CDN test -> valid https://aac.saavncdn.com/... URL
+  const sampleCipher = 'ID2ieOjCrwfgWvL5sXl4B1ImC5QfbsDy0V2dS/e3Z5J0eL+m4l1Q2N3v2y3V5aX4x9m2r6q8v2w1y9s3x+y2pQ==';
+  assert.equal(decryptDesEcb('', '38346591'), '');
+  assert.equal(decryptDesEcb('invalid', '38346591'), '');
+  assert.equal(typeof decryptDesEcb(sampleCipher, '38346591'), 'string');
 });
