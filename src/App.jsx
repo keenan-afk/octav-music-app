@@ -234,6 +234,7 @@ export function App() {
               /* Playlist Detail View */
               <PlaylistDetailView
                 playlist={currentActivePlaylist}
+                region={region}
                 onBack={handleBackFromPlaylist}
                 currentTrack={audio.currentTrack}
                 isPlaying={audio.isPlaying}

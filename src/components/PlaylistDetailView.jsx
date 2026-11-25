@@ -22,6 +22,7 @@ import {
   removePlaylistOffline,
   isPlaylistDownloaded,
 } from '../services/offlineCache';
+import { fetchAlbumTracks } from '../services/musicApi';
 
 /**
  * Playlist / Album Detail View (Spotify iOS 1:1 Mobile Drill-down)
@@ -36,6 +37,7 @@ import {
  */
 export function PlaylistDetailView({
   playlist,
+  region = 'ID',
   onBack,
   currentTrack,
   isPlaying,
@@ -43,7 +45,7 @@ export function PlaylistDetailView({
   onTogglePlayPause,
   likedTrackIds = new Set(),
   onToggleLike,
-  tracks = [],
+  tracks: initialTracks = [],
   onOpenActionSheet,
   onDeletePlaylist,
   onRemoveTrackFromPlaylist,
@@ -54,14 +56,38 @@ export function PlaylistDetailView({
   onUpdatePlaylistCover,
 }) {
   const [filterQuery, setFilterQuery] = useState('');
+  const [fetchedAlbumTracks, setFetchedAlbumTracks] = useState([]);
+  const [isLoadingAlbum, setIsLoadingAlbum] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState('');
   const [isDownloaded, setIsDownloaded] = useState(() => isPlaylistDownloaded(playlist?.id));
   const fileInputRef = useRef(null);
 
+  const tracks = initialTracks.length > 0 ? initialTracks : fetchedAlbumTracks;
+
   React.useEffect(() => {
     setIsDownloaded(isPlaylistDownloaded(playlist?.id));
   }, [playlist?.id]);
+
+  React.useEffect(() => {
+    let active = true;
+    if (initialTracks.length === 0 && playlist?.collectionId) {
+      setIsLoadingAlbum(true);
+      fetchAlbumTracks(playlist.collectionId, region)
+        .then((list) => {
+          if (active) setFetchedAlbumTracks(list);
+        })
+        .finally(() => {
+          if (active) setIsLoadingAlbum(false);
+        });
+    } else {
+      setFetchedAlbumTracks([]);
+      setIsLoadingAlbum(false);
+    }
+    return () => {
+      active = false;
+    };
+  }, [playlist?.collectionId, initialTracks.length, region]);
 
   const isCurrentPlaylistPlaying =
     isPlaying && tracks.some((t) => t.id === currentTrack?.id);
@@ -373,7 +399,12 @@ export function PlaylistDetailView({
 
       {/* Tracklist Section */}
       <div className="px-3 pt-1">
-        {tracks.length === 0 ? (
+        {isLoadingAlbum ? (
+          <div className="py-14 flex flex-col items-center justify-center gap-2.5">
+            <Loader2 className="w-6 h-6 text-[#1ed760] animate-spin" />
+            <span className="text-xs text-white/50 font-medium">Loading album tracklist...</span>
+          </div>
+        ) : tracks.length === 0 ? (
           <div className="py-12 px-4 text-center">
             <div className="w-12 h-12 rounded-2xl bg-white/[0.05] flex items-center justify-center mx-auto text-white/30 mb-3 border border-white/[0.08]">
               <Music className="w-6 h-6" />

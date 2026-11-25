@@ -5,7 +5,6 @@ import { QuickJumpGrid } from './QuickJumpGrid';
 import { HorizontalShelf } from './HorizontalShelf';
 import { SmartArtwork } from './SmartArtwork';
 import { useAuth } from '../context/AuthContext';
-import { REAL_PLAYLISTS } from '../data/mockTracks';
 import { searchMusic, fetchTrendingTracks, fetchNewReleases } from '../services/musicApi';
 import { getRecapEventStatus } from '../services/statsService';
 
@@ -423,9 +422,11 @@ export function HomeView({
             } else {
               onOpenPlaylist({
                 id: item.id,
+                collectionId: item.collectionId,
                 title: item.title,
                 curator: item.artist,
                 cover: item.cover,
+                type: 'Album',
                 tracks: [],
               });
             }
@@ -504,11 +505,47 @@ export function HomeView({
         />
       )}
 
-      {/* Curated Playlists Shelf */}
-      {(isAll || isRock || isIndo) && (
+      {/* Live Curated Mixes built from real fetched charts (Zero empty mock playlists) */}
+      {(isAll || isRock || isIndo) && trendingTracks.length >= 3 && (
         <HorizontalShelf
-          title="Featured Playlists"
-          items={REAL_PLAYLISTS}
+          title="Curated Radio Mixes"
+          items={[
+            {
+              id: `mix-top-${region}`,
+              title: region === 'ID' ? 'Indonesia Top Mix' : 'Global Top Mix',
+              subtitle: `Playlist • ${trendingTracks.length} songs`,
+              curator: 'Octav Radio',
+              cover: trendingTracks[0]?.cover,
+              type: 'Playlist',
+              tracks: trendingTracks,
+            },
+            ...(rockTracks.length > 0
+              ? [
+                  {
+                    id: `mix-rock-${region}`,
+                    title: 'Rock & Alt Rotation',
+                    subtitle: `Playlist • ${rockTracks.length} songs`,
+                    curator: 'Octav Rock',
+                    cover: rockTracks[0]?.cover,
+                    type: 'Playlist',
+                    tracks: rockTracks.map((r) => r.trackData).filter(Boolean),
+                  },
+                ]
+              : []),
+            ...(acousticTracks.length > 0
+              ? [
+                  {
+                    id: `mix-acoustic-${region}`,
+                    title: 'Acoustic & Chill Mix',
+                    subtitle: `Playlist • ${acousticTracks.length} songs`,
+                    curator: 'Octav Unplugged',
+                    cover: acousticTracks[0]?.cover,
+                    type: 'Playlist',
+                    tracks: acousticTracks.map((a) => a.trackData).filter(Boolean),
+                  },
+                ]
+              : []),
+          ]}
           onSelectItem={onOpenPlaylist}
         />
       )}

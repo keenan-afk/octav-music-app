@@ -1259,6 +1259,7 @@ export async function fetchNewReleases(region = 'ID') {
 
       return {
         id: `rel_${regCode}_${e.id?.attributes?.['im:id'] || idx}`,
+        collectionId: e.id?.attributes?.['im:id'] || '',
         title,
         artist,
         subtitle: artist,
@@ -1270,6 +1271,48 @@ export async function fetchNewReleases(region = 'ID') {
     });
   } catch (err) {
     console.warn('Failed fetching new releases:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch real tracklist for an Apple Music / iTunes Album by collectionId
+ */
+export async function fetchAlbumTracks(collectionId, region = 'ID') {
+  if (!collectionId) return [];
+  try {
+    const regCode = (region || 'ID').toLowerCase();
+    const url = `https://itunes.apple.com/lookup?id=${encodeURIComponent(collectionId)}&entity=song&country=${regCode}`;
+    const res = await fetch(url, { signal: safeTimeoutSignal(5000) });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const songs = (data.results || []).filter((r) => r.wrapperType === 'track' && r.trackName);
+    return songs.map((item) => {
+      const durationSec = Math.round((item.trackTimeMillis || 210000) / 1000);
+      const cover = (item.artworkUrl100 || '')
+        .replace('100x100bb.jpg', '600x600bb.jpg')
+        .replace(/^http:\/\//i, 'https://');
+      const title = item.trackName || 'Untitled Track';
+      const artist = item.artistName || 'Artist';
+      return {
+        id: `itunes-${item.trackId || Math.random().toString(36).slice(2, 9)}`,
+        title,
+        artist,
+        album: item.collectionName || title,
+        duration: durationSec,
+        durationFormatted: formatDuration(durationSec),
+        cover: cover || '',
+        audioUrl: item.previewUrl || '',
+        previewUrl: item.previewUrl || '',
+        genre: item.primaryGenreName || 'Music',
+        palette: getPaletteForTrack(title, artist),
+        artistId: item.artistId,
+        collectionId: item.collectionId,
+        source: 'itunes',
+      };
+    });
+  } catch (err) {
+    console.warn('Failed fetching album tracks:', err);
     return [];
   }
 }

@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Play, Pause, Heart, Cast, ListMusic } from 'lucide-react';
+import { Play, Pause, Heart, Sliders, ListMusic } from 'lucide-react';
 import { LiquidSurface } from './LiquidGlassFilter';
 import { SmartArtwork } from './SmartArtwork';
 import gsap from 'gsap';
@@ -102,13 +102,13 @@ export function MiniPlayerIsland({
 
           {/* Right Controls Row (All stopPropagation to prevent accidental modal expansion) */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Device Picker Icon */}
+            {/* Spatial Audio & Equalizer Button */}
             <button
               onClick={handleCastClick}
               className="p-1.5 text-white/50 hover:text-white active:scale-90 transition-all cursor-pointer"
-              title="Connect to a device"
+              title="Spatial Audio & EQ"
             >
-              <Cast className="w-4 h-4" />
+              <Sliders className="w-4 h-4" />
             </button>
 
             {/* Up Next Queue Button */}
