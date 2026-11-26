@@ -8,6 +8,7 @@ import {
   getTrackDedupeKey,
   getTrackKey,
   preResolveTrackStream,
+  cleanSearchQuery,
   streamCache,
 } from '../services/musicApi';
 import { syncUserDataToCloud, fetchUserDataFromCloud } from '../services/supabaseClient';
@@ -511,26 +512,13 @@ export function useAudioController(user = null, region = 'ID') {
         isManualPauseRef.current = false;
         return;
       }
-      // Do not auto-recover if at the end of the track or ended
       if (audio.ended || (audio.duration > 0 && Math.abs(audio.currentTime - audio.duration) < 0.8)) {
         return;
       }
-      // Gentle background recovery (delayed single-shot avoids pause/play stutter oscillation)
-      if (isPlayingRef.current && audio.currentTime > 0 && audio.readyState >= 2) {
-        setTimeout(() => {
-          if (
-            isPlayingRef.current &&
-            !isManualPauseRef.current &&
-            audioRef.current === audio &&
-            audio.paused &&
-            !audio.ended
-          ) {
-            audioEqualizer.resume();
-            audio.play().catch(() => {
-              setIsPlaying(false);
-            });
-          }
-        }, 250);
+      // Respect OS pause events (e.g. headphone unplug, phone call, lockscreen control) without fighting audio focus
+      setIsPlaying(false);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused';
       }
     };
 
@@ -540,6 +528,8 @@ export function useAudioController(user = null, region = 'ID') {
       const cur = currentTrackRef.current;
       if (cur) {
         streamCache.delete(getTrackKey(cur));
+        const { cleanTitle, cleanArtist } = cleanSearchQuery(cur.title, cur.artist);
+        streamCache.delete(`${cleanTitle}__${cleanArtist}`.toLowerCase().trim());
         if (retriedErrorTrackId !== cur.id && cur.previewUrl && audio.src !== cur.previewUrl) {
           retriedErrorTrackId = cur.id;
           audio.src = cur.previewUrl;
@@ -559,7 +549,7 @@ export function useAudioController(user = null, region = 'ID') {
         if (audio.currentTime != null && !isNaN(audio.currentTime)) {
           setCurrentTime(audio.currentTime);
         }
-        audioEqualizer.resume();
+        audioEqualizer.ensureActiveDsp();
         if (isPlayingRef.current && audio.paused && !audio.ended && audio.src) {
           audio.play().catch(() => { });
         }
@@ -604,8 +594,8 @@ export function useAudioController(user = null, region = 'ID') {
     const cur = currentTrackRef.current || currentTrack;
     if (!audio || !cur) return;
 
-    audioEqualizer.init(audio);
-    audioEqualizer.resume();
+    audioEqualizer.registerAudioElement(audio);
+    audioEqualizer.ensureActiveDsp();
 
     // If audio is in error, has no src, or failed: force re-resolve and reload!
     if (!audio.src || audio.error) {
@@ -831,9 +821,9 @@ export function useAudioController(user = null, region = 'ID') {
           : '');
 
       if (audio) {
-        audioEqualizer.init(audio);
+        audioEqualizer.registerAudioElement(audio);
       }
-      audioEqualizer.resume();
+      audioEqualizer.ensureActiveDsp();
 
       // Release previous offline Blob URL if any
       if (activeBlobUrlRef.current) {
@@ -899,9 +889,19 @@ export function useAudioController(user = null, region = 'ID') {
                     currentAudio.src.includes('mzstatic') ||
                     currentAudio.src.includes('itunes.apple.com'))
                 ) {
-                  const savedTime = currentAudio.currentTime;
+                  const savedTime = currentAudio.currentTime || 0;
+                  currentAudio.addEventListener(
+                    'loadedmetadata',
+                    () => {
+                      if (savedTime > 0 && Number.isFinite(currentAudio.duration) && currentAudio.duration > savedTime) {
+                        try {
+                          currentAudio.currentTime = savedTime;
+                        } catch {}
+                      }
+                    },
+                    { once: true }
+                  );
                   currentAudio.src = fullUrl;
-                  currentAudio.currentTime = savedTime;
                   currentAudio.play().catch(() => { });
                   setCurrentTrack((prev) => (prev?.id === track.id ? { ...prev, audioUrl: fullUrl } : prev));
                 }

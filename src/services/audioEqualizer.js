@@ -90,10 +90,10 @@ class AudioEqualizerEngine {
     this.wetGain = null;
     try {
       const savedSpatial = localStorage.getItem(STORAGE_KEY_SPATIAL_ENABLED);
-      this.isSpatialEnabled = savedSpatial !== null ? savedSpatial === 'true' : true;
+      this.isSpatialEnabled = savedSpatial !== null ? savedSpatial === 'true' : false;
       this.spatialMode = localStorage.getItem(STORAGE_KEY_SPATIAL_MODE) || 'vision';
     } catch {
-      this.isSpatialEnabled = true;
+      this.isSpatialEnabled = false;
       this.spatialMode = 'vision';
     }
     this.isInitialized = false;
@@ -272,11 +272,33 @@ class AudioEqualizerEngine {
     }
   }
 
+  shouldEnableDsp() {
+    if (this.isSpatialEnabled) return true;
+    if (this.activeIsolator && this.activeIsolator !== 'normal') return true;
+    return Object.values(this.bandValues || {}).some((v) => Number(v) !== 0);
+  }
+
+  registerAudioElement(audioElement) {
+    if (!audioElement) return;
+    this.audioElement = audioElement;
+    if (this.shouldEnableDsp()) {
+      this.init(audioElement);
+    }
+  }
+
+  ensureActiveDsp() {
+    if (!this.isInitialized && this.audioElement && this.shouldEnableDsp()) {
+      this.init(this.audioElement);
+    }
+    this.resume();
+  }
+
   toggleSpatial(enabled) {
     this.isSpatialEnabled = Boolean(enabled);
     try {
       localStorage.setItem(STORAGE_KEY_SPATIAL_ENABLED, String(this.isSpatialEnabled));
     } catch {}
+    if (this.isSpatialEnabled) this.ensureActiveDsp();
     this._updateSpatialMix();
   }
 
@@ -289,7 +311,7 @@ class AudioEqualizerEngine {
   }
 
   resume() {
-    if (this.ctx && this.ctx.state === 'suspended') {
+    if (this.ctx && (this.ctx.state === 'suspended' || this.ctx.state === 'interrupted')) {
       this.ctx.resume().catch(() => {});
     }
   }
@@ -311,6 +333,9 @@ class AudioEqualizerEngine {
 
   setBandGain(bandId, gainDb, markCustom = true) {
     this.bandValues[bandId] = gainDb;
+    if (Number(gainDb) !== 0) {
+      this.ensureActiveDsp();
+    }
     const band = this.bands.find((b) => b.id === bandId);
     if (band && band.filter && this.ctx) {
       band.filter.gain.setTargetAtTime(gainDb, this.ctx.currentTime, 0.05);
@@ -353,7 +378,7 @@ class AudioEqualizerEngine {
    */
   setIsolatorMode(mode) {
     this.activeIsolator = mode;
-    this.resume();
+    this.ensureActiveDsp();
 
     if (mode === 'guitarFocus') {
       this.setBandGain('sub', -6);

@@ -390,17 +390,31 @@ export function pickBestStreamCandidate(candidateSongs = [], title = '', artist 
     const rawCandTitle = String(s.name || s.title || '');
     const candAlbum = typeof s.album === 'string' ? s.album : String(s.album?.name || '');
 
-    // Build strict artist list ONLY from artist fields (never song title or album name!)
-    const rawSub = String(s.subtitle || '');
-    const subArtistPart = rawSub.includes(' - ') ? rawSub.split(' - ')[0] : rawSub;
+    // Decode HTML entities BEFORE splitting artist delimiters (e.g. '&amp;' or '&#039;' must stay intact!)
+    const decodeEnt = (str) =>
+      String(str || '')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#039;/g, "'");
+
+    const decodedSub = decodeEnt(s.subtitle || '');
+    const subArtistPart = decodedSub.includes(' - ') ? decodedSub.split(' - ')[0] : decodedSub;
+    const rawPrimaryList = Array.isArray(s.primaryArtists)
+      ? s.primaryArtists.map((a) => (typeof a === 'string' ? a : a?.name || ''))
+      : typeof s.primaryArtists === 'string'
+      ? s.primaryArtists.split(',')
+      : [];
+
     const candArtistItems = [
       ...(s.artist_map?.primary_artists || []).map((a) => a?.name || ''),
       ...(s.artist_map?.artists || []).map((a) => a?.name || ''),
-      ...(typeof s.primaryArtists === 'string' ? s.primaryArtists.split(',') : []),
+      ...(s.artists?.primary || []).map((a) => a?.name || ''),
+      ...(s.artists?.all || []).map((a) => a?.name || ''),
+      ...rawPrimaryList,
       ...(typeof s.featuredArtists === 'string' ? s.featuredArtists.split(',') : []),
       ...subArtistPart.split(/,|&|\band\b/i),
     ]
-      .map((a) => String(a || '').replace(/&amp;/g, '&').replace(/&#039;/g, "'").trim())
+      .map((a) => decodeEnt(a).trim())
       .filter(Boolean);
 
     const candArtistJoined = candArtistItems.map(normalizeMatchText).join(' ');

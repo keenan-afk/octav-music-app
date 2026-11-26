@@ -210,4 +210,23 @@ test('pickBestStreamCandidate rejects wrong artists, unrelated short titles, and
     },
   ];
   assert.equal(pickBestStreamCandidate(wrongPool, 'Dan...', 'Sheila On 7', 286), null);
+
+  // HTML entities inside subtitle/artist must decode cleanly before splitting delimiters
+  const entityPool = [
+    {
+      name: "Sweet Child O&#039; Mine",
+      subtitle: 'Guns N&#039; Roses - Appetite For Destruction',
+      duration: 356,
+      downloadUrl: [{ quality: '320kbps', link: 'https://aac.saavncdn.com/015/55555555555555555555555555555555_320.mp4' }],
+    },
+    {
+      name: 'Kangen',
+      subtitle: 'Dewa 19 &amp; Ari Lasso - Terbaik Terbaik',
+      artists: { primary: [{ name: 'Dewa 19' }] },
+      duration: 320,
+      downloadUrl: [{ quality: '320kbps', link: 'https://aac.saavncdn.com/015/66666666666666666666666666666666_320.mp4' }],
+    },
+  ];
+  assert.ok(pickBestStreamCandidate(entityPool, "Sweet Child O' Mine", "Guns N' Roses", 356));
+  assert.ok(pickBestStreamCandidate(entityPool, 'Kangen', 'Dewa 19', 320));
 });

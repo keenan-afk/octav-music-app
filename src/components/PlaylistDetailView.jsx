@@ -67,6 +67,7 @@ export function PlaylistDetailView({
 
   React.useEffect(() => {
     setIsDownloaded(isPlaylistDownloaded(playlist?.id));
+    setFilterQuery('');
   }, [playlist?.id]);
 
   React.useEffect(() => {
