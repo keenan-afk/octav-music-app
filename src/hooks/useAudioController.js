@@ -254,6 +254,8 @@ export function useAudioController(user = null, region = 'ID') {
   const handlePrevTrackRef = useRef();
   const seekToRef = useRef();
   const isManualPauseRef = useRef(false);
+  const playRequestSeqRef = useRef(0);
+  const prefetchedNextTrackIdRef = useRef(null);
 
   const currentTrackRef = useRef(currentTrack);
   useEffect(() => {
@@ -379,9 +381,9 @@ export function useAudioController(user = null, region = 'ID') {
     audio.setAttribute('playsinline', 'true');
     audio.setAttribute('webkit-playsinline', 'true');
 
-    // Passive secondary prefetcher to cache upcoming audio bytes without claiming audio focus
+    // Passive secondary prefetcher to inspect upcoming metadata without saturating background bandwidth
     const prefetchAudio = new Audio();
-    prefetchAudio.preload = 'auto';
+    prefetchAudio.preload = 'metadata';
     prefetchAudioRef.current = prefetchAudio;
 
     audioRef.current = audio;
@@ -421,7 +423,10 @@ export function useAudioController(user = null, region = 'ID') {
     const handleTimeUpdate = () => {
       if (audio.currentTime != null && !isNaN(audio.currentTime)) {
         const cur = audio.currentTime;
-        setCurrentTime(cur);
+        // Skip heavy full-tree React progress re-renders while app is backgrounded
+        if (!document.hidden) {
+          setCurrentTime(cur);
+        }
 
         // Genuine listening time accumulator (flushes every 10s, marks play after >=15s listened)
         const tracker = listeningTrackerRef.current;
@@ -441,7 +446,7 @@ export function useAudioController(user = null, region = 'ID') {
         const { loopA, loopB, isLooping } = loopRef.current;
         if (isLooping && loopA !== null && loopB !== null && cur >= loopB) {
           audio.currentTime = loopA;
-          setCurrentTime(loopA);
+          if (!document.hidden) setCurrentTime(loopA);
           return;
         }
 
@@ -461,7 +466,7 @@ export function useAudioController(user = null, region = 'ID') {
           audio.volume = curVol;
         }
 
-        // Proactively pre-resolve & pre-buffer upcoming track when nearing end (<35s)
+        // Proactively pre-resolve upcoming track once when nearing end (<35s)
         if (audio.duration > 35 && audio.duration - cur < 35) {
           const curQueue = playlistQueueRef.current || [];
           const cTrack = currentTrackRef.current;
@@ -469,7 +474,8 @@ export function useAudioController(user = null, region = 'ID') {
           if (curIdx !== -1 && curQueue.length > 0) {
             const nextTrackObj =
               curIdx + 1 < curQueue.length ? curQueue[curIdx + 1] : curQueue[0];
-            if (nextTrackObj) {
+            if (nextTrackObj && prefetchedNextTrackIdRef.current !== nextTrackObj.id) {
+              prefetchedNextTrackIdRef.current = nextTrackObj.id;
               preResolveTrackStream(nextTrackObj)
                 .then((url) => {
                   if (
@@ -479,9 +485,6 @@ export function useAudioController(user = null, region = 'ID') {
                     prefetchAudioRef.current.src !== url
                   ) {
                     prefetchAudioRef.current.src = url;
-                    try {
-                      prefetchAudioRef.current.load();
-                    } catch {}
                   }
                 })
                 .catch(() => { });
@@ -512,11 +515,22 @@ export function useAudioController(user = null, region = 'ID') {
       if (audio.ended || (audio.duration > 0 && Math.abs(audio.currentTime - audio.duration) < 0.8)) {
         return;
       }
-      // Auto-recover if iOS paused audio unexpectedly in the background while state is active
-      if (isPlayingRef.current && audio.currentTime > 0) {
-        audio.play().catch(() => {
-          setIsPlaying(false);
-        });
+      // Gentle background recovery (delayed single-shot avoids pause/play stutter oscillation)
+      if (isPlayingRef.current && audio.currentTime > 0 && audio.readyState >= 2) {
+        setTimeout(() => {
+          if (
+            isPlayingRef.current &&
+            !isManualPauseRef.current &&
+            audioRef.current === audio &&
+            audio.paused &&
+            !audio.ended
+          ) {
+            audioEqualizer.resume();
+            audio.play().catch(() => {
+              setIsPlaying(false);
+            });
+          }
+        }, 250);
       }
     };
 
@@ -541,8 +555,14 @@ export function useAudioController(user = null, region = 'ID') {
     };
 
     const handleVisibilityChange = () => {
-      if (!document.hidden && isPlayingRef.current && audio.paused && !audio.ended && audio.src) {
-        audio.play().catch(() => { });
+      if (!document.hidden) {
+        if (audio.currentTime != null && !isNaN(audio.currentTime)) {
+          setCurrentTime(audio.currentTime);
+        }
+        audioEqualizer.resume();
+        if (isPlayingRef.current && audio.paused && !audio.ended && audio.src) {
+          audio.play().catch(() => { });
+        }
       }
     };
 
@@ -712,7 +732,8 @@ export function useAudioController(user = null, region = 'ID') {
         }
       }
 
-      // 1. Immediately update active track info and UI state
+      // 1. Immediately update active track info and capture monotonic request token
+      const requestId = ++playRequestSeqRef.current;
       setCurrentTrack(track);
       setIsPlaying(true);
       setIsLoading(true); // Buffering spinner indicator while stream resolves
@@ -825,6 +846,7 @@ export function useAudioController(user = null, region = 'ID') {
       try {
         if (!targetStreamUrl || track.isOfflineCached || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
           const offlineBlobUrl = await getOfflineTrackUrl(track.id);
+          if (playRequestSeqRef.current !== requestId) return;
           if (offlineBlobUrl) {
             activeBlobUrlRef.current = offlineBlobUrl;
             targetStreamUrl = offlineBlobUrl;
@@ -837,6 +859,7 @@ export function useAudioController(user = null, region = 'ID') {
             resolveFullAudioStream(track),
             new Promise((res) => setTimeout(() => res(''), timeoutMs)),
           ]);
+          if (playRequestSeqRef.current !== requestId) return;
           if (
             resolved &&
             !resolved.includes('itunes.apple.com') &&
@@ -846,6 +869,8 @@ export function useAudioController(user = null, region = 'ID') {
             targetStreamUrl = resolved;
           }
         }
+
+        if (playRequestSeqRef.current !== requestId) return;
 
         const finalUrl = targetStreamUrl || track.audioUrl || track.previewUrl || '';
         const isPreviewStream =
@@ -860,6 +885,7 @@ export function useAudioController(user = null, region = 'ID') {
           resolveFullAudioStream(track)
             .then((fullUrl) => {
               if (
+                playRequestSeqRef.current === requestId &&
                 fullUrl &&
                 !fullUrl.includes('AudioPreview') &&
                 !fullUrl.includes('mzstatic') &&

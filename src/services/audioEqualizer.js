@@ -98,6 +98,10 @@ class AudioEqualizerEngine {
     }
     this.isInitialized = false;
     this.audioElement = null;
+    this.lastFilterNode = null;
+    this.isConvolverConnected = false;
+    this._lastResumeAttempt = 0;
+    this._boundVisibilityHandler = null;
 
     // Load persisted 5-band gain values in dB (-12 to +12)
     let savedValues = null;
@@ -138,12 +142,32 @@ class AudioEqualizerEngine {
 
   _updateSpatialMix() {
     if (!this.ctx || !this.dryGain || !this.wetGain) return;
+    const isHidden = typeof document !== 'undefined' && document.hidden;
     const wetByMode = {
       stereo: 0.1,
       studio: 0.18,
       vision: 0.3,
     };
-    const targetWet = this.isSpatialEnabled ? (wetByMode[this.spatialMode] ?? 0.25) : 0;
+
+    // Bypass ConvolverNode convolution while backgrounded so OS CPU throttling never causes audio stutter
+    const shouldUseWet = this.isSpatialEnabled && !isHidden;
+    if (this.lastFilterNode && this.spatialConvolver) {
+      if (shouldUseWet && !this.isConvolverConnected) {
+        try {
+          this.lastFilterNode.connect(this.spatialConvolver);
+          this.spatialConvolver.connect(this.wetGain);
+          this.isConvolverConnected = true;
+        } catch {}
+      } else if (!shouldUseWet && this.isConvolverConnected) {
+        try {
+          this.lastFilterNode.disconnect(this.spatialConvolver);
+          this.spatialConvolver.disconnect(this.wetGain);
+          this.isConvolverConnected = false;
+        } catch {}
+      }
+    }
+
+    const targetWet = shouldUseWet ? (wetByMode[this.spatialMode] ?? 0.25) : 0;
     const targetDry = 1 - targetWet * 0.25;
     this.dryGain.gain.setTargetAtTime(targetDry, this.ctx.currentTime, 0.04);
     this.wetGain.gain.setTargetAtTime(targetWet, this.ctx.currentTime, 0.04);
@@ -156,7 +180,12 @@ class AudioEqualizerEngine {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
 
-      this.ctx = new AudioCtx();
+      try {
+        // 'playback' latencyHint allocates a larger OS audio render buffer resilient to background throttling
+        this.ctx = new AudioCtx({ latencyHint: 'playback' });
+      } catch {
+        this.ctx = new AudioCtx();
+      }
       this.audioElement = audioElement;
 
       // Ensure Pitch Lock is enabled on the audio element
@@ -193,28 +222,46 @@ class AudioEqualizerEngine {
         prevNode.connect(filter);
         prevNode = filter;
       });
+      this.lastFilterNode = prevNode;
 
       // Parallel Dry + Spatial Convolver room stage -> Master Analyser -> Speakers
       this.dryGain = this.ctx.createGain();
       this.wetGain = this.ctx.createGain();
       this.spatialConvolver = this.ctx.createConvolver();
-      this.spatialConvolver.buffer = this._createRoomImpulse(0.95, 3.5);
+      this.spatialConvolver.buffer = this._createRoomImpulse(0.32, 4.2);
 
       prevNode.connect(this.dryGain);
-      prevNode.connect(this.spatialConvolver);
-      this.spatialConvolver.connect(this.wetGain);
+      if (!(typeof document !== 'undefined' && document.hidden) && this.isSpatialEnabled) {
+        prevNode.connect(this.spatialConvolver);
+        this.spatialConvolver.connect(this.wetGain);
+        this.isConvolverConnected = true;
+      }
 
       this.dryGain.connect(this.analyser);
       this.wetGain.connect(this.analyser);
       this.analyser.connect(this.ctx.destination);
 
       this._updateSpatialMix();
+
+      if (typeof document !== 'undefined' && !this._boundVisibilityHandler) {
+        this._boundVisibilityHandler = () => {
+          this._updateSpatialMix();
+          if (!document.hidden && this.audioElement && !this.audioElement.paused) {
+            this.resume();
+          }
+        };
+        document.addEventListener('visibilitychange', this._boundVisibilityHandler);
+      }
+
       this.ctx.onstatechange = () => {
+        const now = Date.now();
         if (
           (this.ctx?.state === 'suspended' || this.ctx?.state === 'interrupted') &&
           this.audioElement &&
-          !this.audioElement.paused
+          !this.audioElement.paused &&
+          now - this._lastResumeAttempt > 400
         ) {
+          this._lastResumeAttempt = now;
           this.ctx.resume().catch(() => {});
         }
       };

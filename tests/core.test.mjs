@@ -24,6 +24,7 @@ const {
   streamCache,
   fetchCategoryFeed,
   fetchGenrePlaylistTracks,
+  pickBestStreamCandidate,
 } = await import('../src/services/musicApi.js');
 
 const {
@@ -163,4 +164,50 @@ test('musicApi fetchCategoryFeed & fetchGenrePlaylistTracks issue distinct queri
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('pickBestStreamCandidate rejects wrong artists, unrelated short titles, and unrequested remixes', () => {
+  const candidates = [
+    // Wrong artist sharing a word ("Roses") + short title "Mine"
+    {
+      name: 'Mine',
+      subtitle: 'Bazzi - Cosmic',
+      primaryArtists: 'Bazzi',
+      album: { name: 'Roses Collection' },
+      duration: 135,
+      downloadUrl: [{ quality: '320kbps', link: 'https://aac.saavncdn.com/015/11111111111111111111111111111111_320.mp4' }],
+    },
+    // Unrequested remix of the real track
+    {
+      name: "Sweet Child O' Mine (Slowed + Reverb Remix)",
+      subtitle: "Guns N' Roses",
+      primaryArtists: "Guns N' Roses",
+      duration: 355,
+      downloadUrl: [{ quality: '320kbps', link: 'https://aac.saavncdn.com/015/22222222222222222222222222222222_320.mp4' }],
+    },
+    // Genuine studio track
+    {
+      name: "Sweet Child O' Mine",
+      subtitle: "Guns N' Roses - Appetite For Destruction",
+      primaryArtists: "Guns N' Roses",
+      duration: 356,
+      downloadUrl: [{ quality: '320kbps', link: 'https://aac.saavncdn.com/015/33333333333333333333333333333333_320.mp4' }],
+    },
+  ];
+
+  const picked = pickBestStreamCandidate(candidates, "Sweet Child O' Mine", "Guns N' Roses", 356);
+  assert.ok(picked, 'Should pick the genuine studio match');
+  assert.equal(picked.name, "Sweet Child O' Mine");
+
+  // Should return null instead of picking an unrelated random Bollywood/pop song
+  const wrongPool = [
+    {
+      name: 'Dan',
+      subtitle: 'Random Artist - Album',
+      primaryArtists: 'Sheila Majid',
+      duration: 240,
+      downloadUrl: [{ quality: '320kbps', link: 'https://aac.saavncdn.com/015/44444444444444444444444444444444_320.mp4' }],
+    },
+  ];
+  assert.equal(pickBestStreamCandidate(wrongPool, 'Dan...', 'Sheila On 7', 286), null);
 });

@@ -41,6 +41,10 @@ export function SpatialAudioModal({ isOpen, onClose, isPlaying }) {
     if (!isOpen) return;
 
     const updateBars = () => {
+      if (typeof document !== 'undefined' && document.hidden) {
+        animFrameRef.current = null;
+        return;
+      }
       if (isPlaying) {
         // Sample real analyser data or generate harmonic organic bars
         const raw = audioEqualizer.getFrequencyData();
@@ -74,8 +78,16 @@ export function SpatialAudioModal({ isOpen, onClose, isPlaying }) {
       animFrameRef.current = requestAnimationFrame(updateBars);
     };
 
+    const handleVisibility = () => {
+      if (!document.hidden && !animFrameRef.current) {
+        animFrameRef.current = requestAnimationFrame(updateBars);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
     animFrameRef.current = requestAnimationFrame(updateBars);
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
   }, [isOpen, isPlaying]);

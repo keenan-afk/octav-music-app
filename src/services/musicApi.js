@@ -320,6 +320,160 @@ export function isValidDecryptedStreamUrl(url = '') {
   return true;
 }
 
+const STREAM_VARIANT_KEYWORDS = [
+  'remix',
+  'lofi',
+  'lo-fi',
+  'slowed',
+  'reverb',
+  'sped up',
+  'nightcore',
+  'mashup',
+  '8d audio',
+  'instrumental',
+  'acoustic',
+  'unplugged',
+  'live',
+  'cover',
+  'karaoke',
+  'tribute',
+];
+
+function normalizeMatchText(str = '') {
+  return String(str || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .toLowerCase()
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/\[.*?\]/g, ' ')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Strictly score and pick the best matching full-stream candidate.
+ * Returns null instead of risking a random wrong track when confidence is insufficient.
+ */
+export function pickBestStreamCandidate(candidateSongs = [], title = '', artist = '', targetDuration = 0) {
+  if (!Array.isArray(candidateSongs) || candidateSongs.length === 0) return null;
+
+  const { cleanTitle, cleanArtist } = cleanSearchQuery(title, artist);
+  const targetTitleNorm = normalizeMatchText(cleanTitle);
+  const targetArtistNorm = normalizeMatchText(cleanArtist);
+  if (!targetTitleNorm) return null;
+
+  const rawReqTitle = (title || '').toLowerCase();
+  const targetTitleTokens = targetTitleNorm.split(' ').filter(Boolean);
+  const targetArtistTokens = targetArtistNorm
+    .split(' ')
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 2 && !['the', 'and', 'band', 'feat', 'ft'].includes(w));
+
+  const normTargetDur = targetDuration > 1000 ? Math.round(targetDuration / 1000) : Number(targetDuration || 0);
+
+  let bestCandidate = null;
+  let bestScore = -1;
+
+  for (const s of candidateSongs) {
+    if (!s) continue;
+    const dur = Number(s.duration || 0);
+    if (dur < 40) continue;
+
+    // Duration sanity check when studio track duration is known
+    if (normTargetDur >= 60) {
+      const diff = Math.abs(dur - normTargetDur);
+      if (diff > Math.max(90, normTargetDur * 0.55)) continue;
+    }
+
+    const rawCandTitle = String(s.name || s.title || '');
+    const candAlbum = typeof s.album === 'string' ? s.album : String(s.album?.name || '');
+
+    // Build strict artist list ONLY from artist fields (never song title or album name!)
+    const rawSub = String(s.subtitle || '');
+    const subArtistPart = rawSub.includes(' - ') ? rawSub.split(' - ')[0] : rawSub;
+    const candArtistItems = [
+      ...(s.artist_map?.primary_artists || []).map((a) => a?.name || ''),
+      ...(s.artist_map?.artists || []).map((a) => a?.name || ''),
+      ...(typeof s.primaryArtists === 'string' ? s.primaryArtists.split(',') : []),
+      ...(typeof s.featuredArtists === 'string' ? s.featuredArtists.split(',') : []),
+      ...subArtistPart.split(/,|&|\band\b/i),
+    ]
+      .map((a) => String(a || '').replace(/&amp;/g, '&').replace(/&#039;/g, "'").trim())
+      .filter(Boolean);
+
+    const candArtistJoined = candArtistItems.map(normalizeMatchText).join(' ');
+
+    if (isCompilationOrKaraoke(rawCandTitle, candArtistJoined, candAlbum)) continue;
+
+    // Reject derivative track versions (remix, slowed, lofi, live, cover, etc.) unless explicitly requested
+    const lowCandTitle = rawCandTitle.toLowerCase();
+    const hasUnwantedVariant = STREAM_VARIANT_KEYWORDS.some(
+      (kw) => new RegExp(`\\b${kw}\\b`, 'i').test(lowCandTitle) && !new RegExp(`\\b${kw}\\b`, 'i').test(rawReqTitle)
+    );
+    if (hasUnwantedVariant) continue;
+
+    // Strict Title Scoring
+    const candTitleNorm = normalizeMatchText(cleanSearchQuery(rawCandTitle, '').cleanTitle || rawCandTitle);
+    if (!candTitleNorm) continue;
+
+    let titleScore = 0;
+    if (candTitleNorm === targetTitleNorm) {
+      titleScore = 120;
+    } else if (targetTitleNorm.length <= 4 || targetTitleTokens.length === 1) {
+      // Short or single-word titles require exact title match or exact whole-word prefix with zero mismatched words
+      if (candTitleNorm === targetTitleNorm) {
+        titleScore = 120;
+      } else {
+        continue;
+      }
+    } else {
+      // Multi-word titles: prevent short substring songs ("Mine") matching long songs ("Sweet Child O Mine")
+      if (candTitleNorm.length < targetTitleNorm.length * 0.65) continue;
+      if (candTitleNorm.startsWith(`${targetTitleNorm} `)) {
+        titleScore = 95;
+      } else {
+        const candTokens = new Set(candTitleNorm.split(' ').filter(Boolean));
+        const matchedCount = targetTitleTokens.filter((tok) => candTokens.has(tok)).length;
+        const ratio = matchedCount / Math.max(targetTitleTokens.length, candTokens.size);
+        if (matchedCount < targetTitleTokens.length || ratio < 0.72) continue;
+        titleScore = Math.round(70 + ratio * 30);
+      }
+    }
+
+    // Strict Artist Scoring (MANDATORY match)
+    let artistScore = 0;
+    if (!targetArtistNorm) {
+      artistScore = 30;
+    } else if (candArtistItems.some((ca) => isArtistStrictMatch(ca, cleanArtist))) {
+      artistScore = 100;
+    } else if (targetArtistTokens.length > 0) {
+      const candArtistWords = new Set(candArtistJoined.split(' ').filter(Boolean));
+      const matchedArtistTokens = targetArtistTokens.filter((tok) => candArtistWords.has(tok));
+      // Require ALL meaningful tokens for multi-word artists (e.g. "Guns N Roses" must match BOTH "guns" and "roses")
+      if (matchedArtistTokens.length === targetArtistTokens.length && targetArtistTokens.some((t) => t.length >= 3)) {
+        artistScore = 75;
+      }
+    }
+
+    if (artistScore === 0) continue;
+
+    const downloadList = s.downloadUrl || s.download_url || [];
+    if (!Array.isArray(downloadList) || downloadList.length === 0) continue;
+
+    const durBonus = normTargetDur >= 60 ? Math.max(0, 20 - Math.abs(dur - normTargetDur) / 3) : 0;
+    const totalScore = titleScore + artistScore + durBonus;
+
+    if (totalScore > bestScore) {
+      bestScore = totalScore;
+      bestCandidate = s;
+    }
+  }
+
+  return bestCandidate;
+}
+
 /**
  * 3-Tier Multi-Engine Full-Length Audio Stream Resolver
  * High-speed concurrent mirror resolution (320kbps / 160kbps full streams)
@@ -348,18 +502,11 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
   const normTitle = cleanTitle.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
   const normArtist = cleanArtist.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
-  const queries = [
-    `${normArtist} ${normTitle}`.trim(),
-    `${normTitle} ${normArtist}`.trim(),
-    normTitle,
-  ];
+  // Always include artist when known to avoid random homonym track collisions
+  const queries = normArtist
+    ? [`${normArtist} ${normTitle}`.trim(), `${normTitle} ${normArtist}`.trim()]
+    : [normTitle];
   const distinctQueries = Array.from(new Set(queries.filter(Boolean)));
-
-  const artistTokens = normArtist
-    .toLowerCase()
-    .split(' ')
-    .map((w) => w.trim())
-    .filter((w) => w.length >= 3 && !['the', 'and', 'band'].includes(w));
 
   // Concurrently query resolvers across candidate queries
   const fetchTasks = [];
@@ -390,55 +537,20 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
     }
 
     if (candidateSongs.length > 0) {
-      const cleanT = normTitle.toLowerCase();
-
-      const matches = candidateSongs.filter((s) => {
-        const dur = Number(s.duration || 0);
-        if (dur < 40) return false;
-
-        const sName = (s.name || s.title || '')
-          .toLowerCase()
-          .replace(/[^\w\s]/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-        const sSub = (s.subtitle || '').toLowerCase();
-        const primaryMap = (s.artist_map?.primary_artists || []).map((a) => (a.name || '').toLowerCase()).join(' ');
-        const allMap = (s.artist_map?.artists || []).map((a) => (a.name || '').toLowerCase()).join(' ');
-        const sPrimary = typeof s.primaryArtists === 'string' ? s.primaryArtists.toLowerCase() : '';
-        const sFeatured = typeof s.featuredArtists === 'string' ? s.featuredArtists.toLowerCase() : '';
-        const albumName = typeof s.album === 'string' ? s.album.toLowerCase() : (s.album?.name || '').toLowerCase();
-        const allArtists = `${sSub} ${primaryMap} ${allMap} ${sPrimary} ${sFeatured} ${albumName} ${sName}`;
-
-        // Strictly reject sound effects, nature sounds, ambient noise, karaoke, or acoustic cover albums
-        if (isCompilationOrKaraoke(sName, allArtists, albumName)) return false;
-
-        const titleMatch =
-          cleanT.length <= 4
-            ? new RegExp(`\\b${cleanT}\\b`, 'i').test(sName)
-            : sName.includes(cleanT) || cleanT.includes(sName);
-
-        let artistMatch = false;
-        if (artistTokens.length === 0) {
-          artistMatch = allArtists.includes(normArtist.toLowerCase()) || isArtistStrictMatch(sSub, normArtist);
-        } else {
-          artistMatch =
-            artistTokens.some((tok) => allArtists.includes(tok)) ||
-            isArtistStrictMatch(sSub, normArtist) ||
-            isArtistStrictMatch(sPrimary, normArtist);
-        }
-
-        return titleMatch && artistMatch;
-      });
-
       let qualityPref = '320kbps';
       try {
         qualityPref = localStorage.getItem('octav_audio_quality') || '320kbps';
       } catch {}
 
-      for (const selectedSong of matches) {
-        const downloadList = selectedSong.downloadUrl || selectedSong.download_url || [];
-        if (!Array.isArray(downloadList) || downloadList.length === 0) continue;
+      // Pick highest-scoring verified candidate, retrying next valid pool item if URL is malformed
+      const remainingPool = [...candidateSongs];
+      while (remainingPool.length > 0) {
+        const selectedSong = pickBestStreamCandidate(remainingPool, title, artist, targetDuration);
+        if (!selectedSong) break;
+        const removeIdx = remainingPool.indexOf(selectedSong);
+        if (removeIdx !== -1) remainingPool.splice(removeIdx, 1);
 
+        const downloadList = selectedSong.downloadUrl || selectedSong.download_url || [];
         let best = null;
         if (qualityPref.includes('96kbps')) {
           best =
@@ -464,7 +576,7 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
     console.warn('Concurrent stream resolution exception:', e);
   }
 
-  // If no full stream was resolved, return fallbackUrl directly WITHOUT polluting streamCache!
+  // If no verified match was found, return fallbackUrl (verified Apple track audio) WITHOUT polluting streamCache
   if (fallbackUrl) {
     return fallbackUrl;
   }
@@ -1216,7 +1328,8 @@ export async function fetchTopCharts(region = 'ID', limit = 50) {
       const rawImg = e['im:image']?.[2]?.label || e['im:image']?.[1]?.label || '';
       const cover = rawImg ? rawImg.replace(/170x170/g, '400x400') : '';
       const previewUrl = e.link?.[1]?.attributes?.href || '';
-      const duration = parseInt(e['im:duration']?.label || '210', 10);
+      const rawDur = parseInt(e['im:duration']?.label || '210', 10);
+      const duration = rawDur > 1000 ? Math.round(rawDur / 1000) : rawDur;
       const genre = e.category?.attributes?.label || 'Pop';
       const rank = idx + 1;
       const trend = idx === 0 ? 'HOT' : idx < 3 ? '▲' : idx % 5 === 0 ? 'NEW' : idx % 2 === 0 ? '▲' : '▼';
