@@ -32,6 +32,7 @@ export function ArtistProfileSheet({
   likedTrackIds = new Set(),
   onToggleLike,
   onOpenActionSheet,
+  onOpenPlaylist,
   onShowToast,
   isFollowingArtist,
   onToggleFollowArtist,
@@ -365,7 +366,21 @@ export function ArtistProfileSheet({
                 <div
                   key={album.id}
                   onClick={() => {
-                    onShowToast?.(`Album: ${album.title} (${album.releaseYear})`);
+                    if (album.collectionId && typeof onOpenPlaylist === 'function') {
+                      onClose?.();
+                      onOpenPlaylist({
+                        id: album.id,
+                        collectionId: album.collectionId,
+                        title: album.title,
+                        curator: album.artist,
+                        cover: album.cover,
+                        type: album.type || 'Album',
+                        description: `${album.releaseYear} • ${album.type || 'Album'}`,
+                        tracks: [],
+                      });
+                    } else {
+                      onShowToast?.(`Album: ${album.title} (${album.releaseYear})`);
+                    }
                   }}
                   className="flex-shrink-0 w-[136px] group cursor-pointer active:scale-95 transition-transform"
                 >

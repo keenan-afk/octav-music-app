@@ -55,7 +55,7 @@ export function safeTimeoutSignal(ms = 5000) {
   setTimeout(() => {
     try {
       controller.abort();
-    } catch {}
+    } catch { }
   }, ms);
   return controller.signal;
 }
@@ -267,7 +267,7 @@ export async function fetchArtistPortrait(artistName, region = 'ID') {
         return portrait;
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 
   // 2. Fallback to Global / US catalog if not found in local region
   if (regCode !== 'us') {
@@ -284,7 +284,7 @@ export async function fetchArtistPortrait(artistName, region = 'ID') {
           return portrait;
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   return '';
@@ -417,8 +417,8 @@ export function pickBestStreamCandidate(candidateSongs = [], title = '', artist 
     const rawPrimaryList = Array.isArray(s.primaryArtists)
       ? s.primaryArtists.map((a) => (typeof a === 'string' ? a : a?.name || ''))
       : typeof s.primaryArtists === 'string'
-      ? s.primaryArtists.split(',')
-      : [];
+        ? s.primaryArtists.split(',')
+        : [];
 
     // ONLY inspect actual performing/featured artists — NEVER composer/lyricist maps (artist_map.artists / artists.all),
     // because JioSaavn credits original songwriters there on random cover/tribute tracks!
@@ -570,7 +570,7 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
       let qualityPref = '320kbps';
       try {
         qualityPref = localStorage.getItem('octav_audio_quality') || '320kbps';
-      } catch {}
+      } catch { }
 
       // Pick highest-scoring verified candidate, retrying next valid pool item if URL is malformed
       const remainingPool = [...candidateSongs];
@@ -635,7 +635,7 @@ export async function preResolveTrackStream(track) {
       track.audioUrl = full;
       return full;
     }
-  } catch {}
+  } catch { }
   return '';
 }
 
@@ -905,7 +905,25 @@ export async function searchMusic(rawQuery, region = 'ID') {
       if (rawArtists.length === 0 && fbArtistRes.results && fbArtistRes.results.length > 0) {
         rawArtists.push(...fbArtistRes.results);
       }
-    } catch (e) {}
+    } catch (e) { }
+  }
+
+  // Tier-2 Catalog Fallback: If iTunes search rate-limited (403) or returned empty, query JioSaavn catalog!
+  if (songsToUse.length === 0) {
+    const jioFallback = await _searchJioSaavnCatalog(normalized, 20);
+    songsToUse = jioFallback.map((t) => ({
+      wrapperType: 'track',
+      kind: 'song',
+      trackId: t.id,
+      trackName: t.title,
+      artistName: t.artist,
+      collectionName: t.album,
+      artworkUrl100: t.cover,
+      trackTimeMillis: (t.duration || 210) * 1000,
+      primaryGenreName: t.genre || 'Music',
+      previewUrl: t.resolvedStreamUrl || t.audioUrl || '',
+      resolvedStreamUrl: t.resolvedStreamUrl || t.audioUrl || '',
+    }));
   }
 
   const lowQuery = normalized.toLowerCase().trim();
@@ -1046,7 +1064,7 @@ export async function searchMusic(rawQuery, region = 'ID') {
     parsedTracks.length > 0 &&
     ((parsedTracks[0].title || '').toLowerCase().trim() === lowQuery ||
       (parsedTracks[0].title || '').toLowerCase().replace(/[^\w\s]/g, '').trim() ===
-        lowQuery.replace(/[^\w\s]/g, ''));
+      lowQuery.replace(/[^\w\s]/g, ''));
 
   if (rawArtists.length > 0) {
     // Only match an artist if:
@@ -1063,9 +1081,9 @@ export async function searchMusic(rawQuery, region = 'ID') {
       exactArtist ||
       (isExplicitArtistQuery
         ? rawArtists.find((a) => {
-            const name = (a.artistName || '').toLowerCase().trim();
-            return name.startsWith(lowQuery);
-          })
+          const name = (a.artistName || '').toLowerCase().trim();
+          return name.startsWith(lowQuery);
+        })
         : null);
 
     if (matchedArtist) {
@@ -1206,6 +1224,7 @@ export async function fetchArtistDiscography(artistIdentifier, region = 'ID') {
         const year = item.releaseDate ? new Date(item.releaseDate).getFullYear() : 2024;
         return {
           id: `album-${item.collectionId || idx}`,
+          collectionId: item.collectionId || '',
           title: item.collectionName || 'Album',
           artist: item.artistName || finalArtistName,
           cover: cover || '', // NEVER borrow tracks[0]?.cover!
@@ -1262,25 +1281,25 @@ export async function fetchTrendingTracks(region = 'ID') {
   const trendingQueries =
     region === 'ID'
       ? [
-          'Sheila On 7 Dan',
-          'Dewa 19 Kangen',
-          'Noah Separuh Aku',
-          'Payung Teduh Akad',
-          'Sheila On 7 Sephia',
-          "Guns N' Roses November Rain",
-          'Avenged Sevenfold Dear God',
-          'Dewa 19 Pupus',
-        ]
+        'Sheila On 7 Dan',
+        'Dewa 19 Kangen',
+        'Noah Separuh Aku',
+        'Payung Teduh Akad',
+        'Sheila On 7 Sephia',
+        "Guns N' Roses November Rain",
+        'Avenged Sevenfold Dear God',
+        'Dewa 19 Pupus',
+      ]
       : [
-          "Guns N' Roses Sweet Child O' Mine",
-          'Avenged Sevenfold Dear God',
-          'Oasis Wonderwall',
-          'Radiohead Creep',
-          'Arctic Monkeys Do I Wanna Know',
-          'Queen Bohemian Rhapsody',
-          'Coldplay Fix You',
-          'Nirvana Smells Like Teen Spirit',
-        ];
+        "Guns N' Roses Sweet Child O' Mine",
+        'Avenged Sevenfold Dear God',
+        'Oasis Wonderwall',
+        'Radiohead Creep',
+        'Arctic Monkeys Do I Wanna Know',
+        'Queen Bohemian Rhapsody',
+        'Coldplay Fix You',
+        'Nirvana Smells Like Teen Spirit',
+      ];
 
   const results = [];
   for (const q of trendingQueries.slice(0, 6)) {
@@ -1304,25 +1323,25 @@ export async function fetchHomeFeed(region = 'ID') {
   const featuredRequests =
     region === 'ID'
       ? [
-          { title: 'Dan...', query: 'Sheila On 7 Dan' },
-          { title: 'Kangen', query: 'Dewa 19 Kangen' },
-          { title: 'Separuh Aku', query: 'Noah Separuh Aku' },
-          { title: 'Akad', query: 'Payung Teduh Akad' },
-          { title: 'November Rain', query: "Guns N' Roses November Rain" },
-          { title: 'Dear God', query: 'Avenged Sevenfold Dear God' },
-          { title: 'Sephia', query: 'Sheila On 7 Sephia' },
-          { title: 'Pupus', query: 'Dewa 19 Pupus' },
-        ]
+        { title: 'Dan...', query: 'Sheila On 7 Dan' },
+        { title: 'Kangen', query: 'Dewa 19 Kangen' },
+        { title: 'Separuh Aku', query: 'Noah Separuh Aku' },
+        { title: 'Akad', query: 'Payung Teduh Akad' },
+        { title: 'November Rain', query: "Guns N' Roses November Rain" },
+        { title: 'Dear God', query: 'Avenged Sevenfold Dear God' },
+        { title: 'Sephia', query: 'Sheila On 7 Sephia' },
+        { title: 'Pupus', query: 'Dewa 19 Pupus' },
+      ]
       : [
-          { title: 'November Rain', query: "Guns N' Roses November Rain" },
-          { title: 'Dear God', query: 'Avenged Sevenfold Dear God' },
-          { title: 'Wonderwall', query: 'Oasis Wonderwall' },
-          { title: 'Bohemian Rhapsody', query: 'Queen Bohemian Rhapsody' },
-          { title: 'Creep', query: 'Radiohead Creep' },
-          { title: 'Do I Wanna Know?', query: 'Arctic Monkeys Do I Wanna Know' },
-          { title: 'Fix You', query: 'Coldplay Fix You' },
-          { title: 'Smells Like Teen Spirit', query: 'Nirvana Smells Like Teen Spirit' },
-        ];
+        { title: 'November Rain', query: "Guns N' Roses November Rain" },
+        { title: 'Dear God', query: 'Avenged Sevenfold Dear God' },
+        { title: 'Wonderwall', query: 'Oasis Wonderwall' },
+        { title: 'Bohemian Rhapsody', query: 'Queen Bohemian Rhapsody' },
+        { title: 'Creep', query: 'Radiohead Creep' },
+        { title: 'Do I Wanna Know?', query: 'Arctic Monkeys Do I Wanna Know' },
+        { title: 'Fix You', query: 'Coldplay Fix You' },
+        { title: 'Smells Like Teen Spirit', query: 'Nirvana Smells Like Teen Spirit' },
+      ];
 
   const quickPicks = [];
   for (const req of featuredRequests) {
@@ -1467,27 +1486,263 @@ export async function fetchAlbumTracks(collectionId, region = 'ID') {
 }
 
 const _categoryCache = new Map();
+const CATEGORY_SESSION_TTL_MS = 20 * 60 * 1000;
 
-async function _collectUniqueTracks(queries = [], region = 'ID', maxPerQuery = 3, limit = 15) {
-  const settled = await Promise.allSettled(
-    queries.map((q) => searchMusic(q, region))
-  );
+function _readSessionCategoryCache(key) {
+  if (_categoryCache.has(key)) return _categoryCache.get(key);
+  try {
+    if (typeof sessionStorage === 'undefined') return null;
+    const raw = sessionStorage.getItem(`octav_cat_${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.tracks) && Date.now() < parsed.expiresAt) {
+      _categoryCache.set(key, parsed.tracks);
+      return parsed.tracks;
+    }
+  } catch {}
+  return null;
+}
+
+function _writeSessionCategoryCache(key, tracks) {
+  if (!Array.isArray(tracks) || tracks.length === 0) return;
+  _categoryCache.set(key, tracks);
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(
+        `octav_cat_${key}`,
+        JSON.stringify({ tracks, expiresAt: Date.now() + CATEGORY_SESSION_TTL_MS })
+      );
+    }
+  } catch {}
+}
+
+function _decodeBasicEntities(str = '') {
+  return String(str || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'");
+}
+
+async function _searchJioSaavnCatalog(query, limit = 6) {
+  const endpoints = [
+    ...(typeof window !== 'undefined' && !['localhost', '127.0.0.1'].includes(window.location.hostname)
+      ? [`/api/resolve-stream?q=${encodeURIComponent(query)}&limit=${limit}`]
+      : []),
+    `https://jiosaavn-api-private.vercel.app/search/songs?q=${encodeURIComponent(query)}&limit=${limit}`,
+    `https://jiosaavn-api-taupe.vercel.app/search/songs?query=${encodeURIComponent(query)}&limit=${limit}`,
+  ];
+
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, { signal: safeTimeoutSignal(5000) });
+      const ct = res.headers.get('content-type') || '';
+      if (!res.ok || !ct.includes('application/json')) continue;
+      const json = await res.json();
+      const rawList = json?.data?.results || json?.results || [];
+      if (!Array.isArray(rawList) || rawList.length === 0) continue;
+
+      const mapped = [];
+      for (const s of rawList) {
+        if (!s || Number(s.duration || 0) < 40) continue;
+        const title = _decodeBasicEntities(s.name || s.title || 'Untitled');
+        const sub = _decodeBasicEntities(s.subtitle || '');
+        const primary =
+          (s.artist_map?.primary_artists || []).map((a) => _decodeBasicEntities(a.name || '')).filter(Boolean).join(', ') ||
+          (s.artists?.primary || []).map((a) => _decodeBasicEntities(a.name || '')).filter(Boolean).join(', ') ||
+          (typeof s.primaryArtists === 'string' ? _decodeBasicEntities(s.primaryArtists) : '') ||
+          (sub.includes(' - ') ? sub.split(' - ')[0] : sub) ||
+          'Artist';
+        const album = _decodeBasicEntities(typeof s.album === 'string' ? s.album : s.album?.name || title);
+        if (isCompilationOrKaraoke(title, primary, album)) continue;
+        const lowQ = query.toLowerCase();
+        const lowT = title.toLowerCase();
+        if (
+          (/\b(remix|original mix|slowed|reverb|lofi|lo-fi|mashup|nightcore|sped up)\b/i.test(lowT) &&
+            !/\b(remix|slowed|lofi|mashup)\b/i.test(lowQ))
+        ) {
+          continue;
+        }
+
+        const downloads = s.downloadUrl || s.download_url || [];
+        const bestAudio =
+          downloads.find((d) => d.quality === '320kbps') ||
+          downloads.find((d) => d.quality === '160kbps') ||
+          downloads[downloads.length - 1];
+        const audioUrl = bestAudio?.link || bestAudio?.url || '';
+        if (!isValidDecryptedStreamUrl(audioUrl)) continue;
+
+        const imgs = Array.isArray(s.image) ? s.image : [];
+        const bestImg = imgs[imgs.length - 1]?.link || imgs[imgs.length - 1]?.url || (typeof s.image === 'string' ? s.image : '');
+        const cover = String(bestImg || '').replace(/^http:\/\//i, 'https://');
+        const durSec = Number(s.duration || 210);
+
+        mapped.push({
+          id: `saavn-${s.id || title}`,
+          title,
+          artist: primary,
+          album,
+          cover,
+          duration: durSec,
+          durationFormatted: formatDuration(durSec),
+          previewUrl: audioUrl,
+          audioUrl,
+          resolvedStreamUrl: audioUrl,
+          genre: 'Music',
+          palette: getPaletteForTrack(title, primary),
+          source: 'saavn',
+        });
+      }
+      if (mapped.length > 0) {
+        const qTokens = normalizeMatchText(query).split(' ').filter((w) => w.length >= 2);
+        mapped.sort((a, b) => {
+          const scoreItem = (t) => {
+            const ta = `${normalizeMatchText(t.artist)} ${normalizeMatchText(t.title)}`;
+            const artN = normalizeMatchText(t.artist);
+            let sc = 0;
+            for (const tok of qTokens) {
+              if (artN.includes(tok)) sc += 3;
+              else if (ta.includes(tok)) sc += 1;
+            }
+            return sc;
+          };
+          return scoreItem(b) - scoreItem(a);
+        });
+        return mapped;
+      }
+    } catch {}
+  }
+  return [];
+}
+
+function _mapItunesSongItem(item, fallbackArtist = '') {
+  const durationSec = Math.round((item.trackTimeMillis || 210000) / 1000);
+  const title = item.trackName || 'Untitled';
+  const artist = item.artistName || fallbackArtist || 'Unknown Artist';
+  const cover = item.artworkUrl100
+    ? item.artworkUrl100.replace('100x100bb.jpg', '600x600bb.jpg')
+    : '';
+  return {
+    id: `itunes-${item.trackId}`,
+    title,
+    artist,
+    album: item.collectionName || 'Single',
+    cover,
+    duration: durationSec,
+    durationFormatted: formatDuration(durationSec),
+    previewUrl: item.previewUrl || '',
+    audioUrl: item.resolvedStreamUrl || item.previewUrl || '',
+    resolvedStreamUrl: item.resolvedStreamUrl || '',
+    genre: item.primaryGenreName || 'Music',
+    palette: getPaletteForTrack(title, artist),
+    artistId: item.artistId,
+    collectionId: item.collectionId,
+    source: 'itunes',
+  };
+}
+
+async function _fetchQuickItunesTracks(query, region = 'ID') {
+  const countryCode = region === 'US' ? 'US' : 'ID';
+  const fetchCountry = async (cc) => {
+    try {
+      const url = `https://itunes.apple.com/search?country=${cc}&media=music&entity=song&limit=6&term=${encodeURIComponent(query)}`;
+      const res = await fetch(url, { signal: safeTimeoutSignal(4500) });
+      if (!res.ok) return { rateLimited: res.status === 403 || res.status === 429, tracks: [] };
+      const data = await res.json();
+      const raw = (data.results || []).filter(
+        (item) =>
+          item.trackName &&
+          item.previewUrl &&
+          !isCompilationOrKaraoke(item.trackName, item.artistName, item.collectionName)
+      );
+      return { rateLimited: false, tracks: raw.map((item) => _mapItunesSongItem(item)) };
+    } catch {
+      return { rateLimited: false, tracks: [] };
+    }
+  };
+
+  const localRes = await fetchCountry(countryCode);
+  if (localRes.tracks.length > 0) return localRes.tracks;
+
+  if (!localRes.rateLimited && countryCode !== 'US') {
+    const usRes = await fetchCountry('US');
+    if (usRes.tracks.length > 0) return usRes.tracks;
+  }
+
+  // Fallback directly to JioSaavn catalog when iTunes search is rate-limited (403/429) or empty
+  return _searchJioSaavnCatalog(query, 6);
+}
+
+async function _fetchAppleRssGenre(region = 'ID', rssGenreId = 14) {
+  try {
+    const cc = region === 'US' ? 'us' : 'id';
+    const url = `https://itunes.apple.com/${cc}/rss/topsongs/limit=15/genre=${rssGenreId}/json`;
+    const res = await fetch(url, { signal: safeTimeoutSignal(5000) });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.feed?.entry || []).map((e, idx) => {
+      const title = e['im:name']?.label || 'Untitled';
+      const artist = e['im:artist']?.label || 'Unknown Artist';
+      const rawImg = e['im:image']?.[2]?.label || e['im:image']?.[1]?.label || '';
+      const cover = rawImg ? rawImg.replace(/170x170/g, '400x400') : '';
+      const previewUrl = e.link?.[1]?.attributes?.href || '';
+      const rawDur = parseInt(e['im:duration']?.label || '210', 10);
+      const duration = rawDur > 1000 ? Math.round(rawDur / 1000) : rawDur;
+      return {
+        id: `rss_${cc}_${rssGenreId}_${e.id?.attributes?.['im:id'] || idx}`,
+        title,
+        artist,
+        album: e['im:collection']?.['im:name']?.label || title,
+        cover,
+        duration,
+        durationFormatted: formatDuration(duration),
+        previewUrl,
+        audioUrl: previewUrl,
+        genre: e.category?.attributes?.label || 'Music',
+        palette: getPaletteForTrack(title, artist),
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function _collectUniqueTracks(queries = [], region = 'ID', maxPerQuery = 1, limit = 15, fallbackRssGenre = null) {
   const seen = new Set();
   const collected = [];
+  const BATCH_SIZE = 3;
 
-  for (const result of settled) {
-    if (result.status !== 'fulfilled' || !Array.isArray(result.value)) continue;
-    let addedForQuery = 0;
-    for (const track of result.value) {
-      if (!track || !track.title) continue;
+  for (let i = 0; i < queries.length; i += BATCH_SIZE) {
+    if (collected.length >= limit) break;
+    const chunk = queries.slice(i, i + BATCH_SIZE);
+    const settled = await Promise.allSettled(
+      chunk.map((q) => _fetchQuickItunesTracks(q, region))
+    );
+
+    for (const result of settled) {
+      if (result.status !== 'fulfilled' || !Array.isArray(result.value)) continue;
+      let addedForQuery = 0;
+      for (const track of result.value) {
+        if (!track || !track.title) continue;
+        const dedupeKey = `${(track.title || '').toLowerCase().trim()}::${(track.artist || '').toLowerCase().trim()}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        collected.push(track);
+        addedForQuery += 1;
+        if (addedForQuery >= maxPerQuery || collected.length >= limit) break;
+      }
+      if (collected.length >= limit) break;
+    }
+  }
+
+  if (collected.length < 4 && fallbackRssGenre) {
+    const rss = await _fetchAppleRssGenre(region, fallbackRssGenre);
+    for (const track of rss) {
       const dedupeKey = `${(track.title || '').toLowerCase().trim()}::${(track.artist || '').toLowerCase().trim()}`;
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
       collected.push(track);
-      addedForQuery += 1;
-      if (addedForQuery >= maxPerQuery || collected.length >= limit) break;
+      if (collected.length >= limit) break;
     }
-    if (collected.length >= limit) break;
   }
 
   return collected;
@@ -1545,15 +1800,31 @@ const GENRE_QUERIES = {
   g8: ['Adele Someone Like You', 'Glenn Fredly Januari', 'Chrisye Seperti Yang Kau Minta', 'Sam Smith Stay With Me', 'Lewis Capaldi Someone You Loved', 'Mahalini Sial', 'Judika Aku Yang Tersakiti', 'Bruno Mars When I Was Your Man'],
 };
 
+const CATEGORY_RSS_GENRES = {
+  'Indo Hits': 14,
+  Rock: 21,
+  Acoustic: 10,
+};
+
+const GENRE_RSS_IDS = {
+  g1: 21,
+  g2: 14,
+  g3: 20,
+  g4: 20,
+  g5: 21,
+  g6: 10,
+  g7: 21,
+  g8: 14,
+};
+
 /**
  * Fetch distinct real tracks for a Home category filter tab
  */
 export async function fetchCategoryFeed(category, region = 'ID') {
   if (!category || category === 'All') return [];
   const cacheKey = `cat:${category}:${region}`;
-  if (_categoryCache.has(cacheKey)) {
-    return _categoryCache.get(cacheKey);
-  }
+  const cached = _readSessionCategoryCache(cacheKey);
+  if (cached) return cached;
 
   let tracks = [];
   if (category === 'Trending') {
@@ -1561,24 +1832,16 @@ export async function fetchCategoryFeed(category, region = 'ID') {
     tracks = charts.length > 0 ? charts : await fetchTrendingTracks(region);
   } else {
     const queries = CATEGORY_QUERIES[category] || [category];
-    tracks = await _collectUniqueTracks(queries, region, 1, 15);
-    if (category === 'Indo Hits' && region === 'ID' && tracks.length < 12) {
-      const charts = await fetchTopCharts('ID', 10);
-      const seen = new Set(tracks.map((t) => `${(t.title || '').toLowerCase()}::${(t.artist || '').toLowerCase()}`));
-      for (const c of charts) {
-        const k = `${(c.title || '').toLowerCase()}::${(c.artist || '').toLowerCase()}`;
-        if (!seen.has(k)) {
-          seen.add(k);
-          tracks.push(c);
-        }
-        if (tracks.length >= 15) break;
-      }
-    }
+    tracks = await _collectUniqueTracks(
+      queries,
+      region,
+      1,
+      15,
+      CATEGORY_RSS_GENRES[category] || 14
+    );
   }
 
-  if (tracks.length > 0) {
-    _categoryCache.set(cacheKey, tracks);
-  }
+  _writeSessionCategoryCache(cacheKey, tracks);
   return tracks;
 }
 
@@ -1587,16 +1850,19 @@ export async function fetchCategoryFeed(category, region = 'ID') {
  */
 export async function fetchGenrePlaylistTracks(genreId, genreTitle, region = 'ID') {
   const cacheKey = `genre:${genreId || genreTitle}:${region}`;
-  if (_categoryCache.has(cacheKey)) {
-    return _categoryCache.get(cacheKey);
-  }
+  const cached = _readSessionCategoryCache(cacheKey);
+  if (cached) return cached;
 
   const queries = GENRE_QUERIES[genreId] || [genreTitle || 'Popular Hits'];
-  const tracks = await _collectUniqueTracks(queries, region, GENRE_QUERIES[genreId] ? 1 : 3, 15);
+  const tracks = await _collectUniqueTracks(
+    queries,
+    region,
+    GENRE_QUERIES[genreId] ? 1 : 3,
+    15,
+    GENRE_RSS_IDS[genreId] || 14
+  );
 
-  if (tracks.length > 0) {
-    _categoryCache.set(cacheKey, tracks);
-  }
+  _writeSessionCategoryCache(cacheKey, tracks);
   return tracks;
 }
 

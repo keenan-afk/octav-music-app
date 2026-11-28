@@ -152,7 +152,9 @@ export function AudioEQModal({ isOpen, onClose, onShowToast }) {
 
         {/* 1-Tap Audiophile & Musician Presets Row */}
         <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-1 -mx-1 px-1">
-          {Object.values(EQ_PRESETS).map((p) => {
+          {Object.values(EQ_PRESETS)
+            .filter((p) => p.id !== 'custom')
+            .map((p) => {
             const isActive = activePreset === p.id;
             return (
               <button

@@ -382,6 +382,7 @@ export function App() {
             likedTrackIds={audio.likedTrackIds}
             onToggleLike={audio.toggleLike}
             onOpenActionSheet={openActionSheet}
+            onOpenPlaylist={handleOpenPlaylist}
             onShowToast={showToast}
             isFollowingArtist={followedManager.isFollowingArtist}
             onToggleFollowArtist={followedManager.toggleFollowArtist}

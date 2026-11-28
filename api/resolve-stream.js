@@ -36,6 +36,17 @@ function normalizeDirectJioSaavnResults(results = []) {
           primary_artists: primaryArtists,
           artists: allArtists,
         },
+        image: item.image
+          ? [
+              { quality: '150x150', link: String(item.image).replace(/^http:\/\//i, 'https://') },
+              {
+                quality: '500x500',
+                link: String(item.image)
+                  .replace(/^http:\/\//i, 'https://')
+                  .replace(/150x150|50x50/g, '500x500'),
+              },
+            ]
+          : [],
         downloadUrl: [
           { quality: '96kbps', link: buildQualityUrl(96) },
           { quality: '160kbps', link: buildQualityUrl(160) },

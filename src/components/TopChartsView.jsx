@@ -22,9 +22,13 @@ export function TopChartsView({
   onOpenActionSheet,
   onOpenArtist,
 }) {
-  const [chartMode, setChartMode] = useState('local'); // 'local' (ID) | 'global' (US)
+  const [chartMode, setChartMode] = useState(() => (region === 'US' ? 'global' : 'local')); // 'local' (ID) | 'global' (US)
   const [tracks, setTracks] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setChartMode(region === 'US' ? 'global' : 'local');
+  }, [region]);
 
   const activeRegionCode = chartMode === 'local' ? 'ID' : 'US';
 
