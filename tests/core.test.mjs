@@ -229,4 +229,31 @@ test('pickBestStreamCandidate rejects wrong artists, unrelated short titles, and
   ];
   assert.ok(pickBestStreamCandidate(entityPool, "Sweet Child O' Mine", "Guns N' Roses", 356));
   assert.ok(pickBestStreamCandidate(entityPool, 'Kangen', 'Dewa 19', 320));
+
+  // Composer/songwriter credited in artist_map.artists on a cover version MUST be rejected
+  const coverCreditPool = [
+    {
+      name: 'Slow Dancing in a Burning Room',
+      subtitle: 'Jacob Davis - Slow Dancing in a Burning Room',
+      artist_map: {
+        primary_artists: [{ name: 'Jacob Davis' }],
+        artists: [{ name: 'John Mayer' }],
+      },
+      duration: 183,
+      downloadUrl: [{ quality: '320kbps', link: 'https://aac.saavncdn.com/015/77777777777777777777777777777777_320.mp4' }],
+    },
+    {
+      name: 'Bohemian Rhapsody (Piano Version)',
+      subtitle: 'Chris Miggells - Bohemian Rhapsody (Piano Version)',
+      artist_map: {
+        primary_artists: [{ name: 'Chris Miggells' }],
+        artists: [{ name: 'Queen' }],
+      },
+      duration: 368,
+      downloadUrl: [{ quality: '320kbps', link: 'https://aac.saavncdn.com/015/88888888888888888888888888888888_320.mp4' }],
+    },
+  ];
+  assert.equal(pickBestStreamCandidate(coverCreditPool, 'Slow Dancing in a Burning Room', 'John Mayer', 242), null);
+  assert.equal(pickBestStreamCandidate(coverCreditPool, 'Bohemian Rhapsody', 'Queen', 354), null);
+  assert.equal(isCompilationOrKaraoke("Sweet Child o' Mine", 'Vitamin String Quartet', 'Tribute Album'), true);
 });

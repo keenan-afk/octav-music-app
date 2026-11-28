@@ -130,6 +130,14 @@ export function isCompilationOrKaraoke(title = '', artist = '', album = '') {
     'cover version',
     'coverin terus',
     'keroncong version',
+    'string quartet',
+    'vitamin string quartet',
+    'idol artist',
+    'piano version',
+    'kidz bop',
+    'music box',
+    '8-bit tribute',
+    'muppets version',
   ];
 
   if (lowArtist === 'various' || lowArtist === 'various artists') return true;
@@ -337,6 +345,13 @@ const STREAM_VARIANT_KEYWORDS = [
   'cover',
   'karaoke',
   'tribute',
+  'piano',
+  'violin',
+  'cello',
+  'orchestra',
+  'harp',
+  'music box',
+  '8-bit',
 ];
 
 function normalizeMatchText(str = '') {
@@ -405,11 +420,12 @@ export function pickBestStreamCandidate(candidateSongs = [], title = '', artist 
       ? s.primaryArtists.split(',')
       : [];
 
+    // ONLY inspect actual performing/featured artists — NEVER composer/lyricist maps (artist_map.artists / artists.all),
+    // because JioSaavn credits original songwriters there on random cover/tribute tracks!
     const candArtistItems = [
       ...(s.artist_map?.primary_artists || []).map((a) => a?.name || ''),
-      ...(s.artist_map?.artists || []).map((a) => a?.name || ''),
       ...(s.artists?.primary || []).map((a) => a?.name || ''),
-      ...(s.artists?.all || []).map((a) => a?.name || ''),
+      ...(s.artists?.featured || []).map((a) => a?.name || ''),
       ...rawPrimaryList,
       ...(typeof s.featuredArtists === 'string' ? s.featuredArtists.split(',') : []),
       ...subArtistPart.split(/,|&|\band\b/i),
@@ -1485,6 +1501,12 @@ const CATEGORY_QUERIES = {
     'Dewa 19 Kangen',
     'Sheila On 7 Dan',
     'Hindia Evaluasi',
+    'Noah Separuh Aku',
+    'Raisa Kali Kedua',
+    'Sal Priadi Gala Bunga Matahari',
+    'Bernadya Satu Bulan',
+    'Juicy Luicy Lantas',
+    'Lyodra Pesan Terakhir',
   ],
   Rock: [
     "Guns N' Roses Sweet Child O' Mine",
@@ -1493,26 +1515,34 @@ const CATEGORY_QUERIES = {
     'Linkin Park Numb',
     'Avenged Sevenfold Dear God',
     'Arctic Monkeys Do I Wanna Know',
+    'Oasis Wonderwall',
+    'Metallica Enter Sandman',
+    'Red Hot Chili Peppers Californication',
+    'Bon Jovi Livin On A Prayer',
   ],
   Acoustic: [
     'Payung Teduh Akad',
-    'John Mayer Slow Dancing Acoustic',
+    'John Mayer Slow Dancing in a Burning Room',
     'Pamungkas To The Bone',
     'Ed Sheeran Photograph',
     'Banda Neira Sampai Jadi Debu',
     'Fiersa Besari Celengan Rindu',
+    'Tulus Monokrom',
+    'John Mayer Gravity',
+    'Jason Mraz I Wont Give Up',
+    'Fourtwnty Zona Nyaman',
   ],
 };
 
 const GENRE_QUERIES = {
-  g1: ["Guns N' Roses Welcome to the Jungle", 'Metallica Enter Sandman', 'Linkin Park In The End', 'Avenged Sevenfold Nightmare', 'Queen We Will Rock You'],
-  g2: ['Tulus Monokrom', 'Mahalini Melawan Restu', 'Raisa Kali Kedua', 'Tiara Andini Usai', 'Lyodra Sang Dewi'],
-  g3: ['Hindia Rumah ke Rumah', 'Feast Peradaban', 'Tame Impala The Less I Know The Better', 'Reality Club Anything You Want', 'Radiohead Creep'],
-  g4: ['Oasis Wonderwall', 'Blur Song 2', 'The Verve Bitter Sweet Symphony', 'Coldplay Yellow', 'Keane Somewhere Only We Know'],
-  g5: ['Dewa 19 Pupus', 'Sheila On 7 Sephia', 'Padi Begitu Indah', 'Nirvana Come As You Are', 'Red Hot Chili Peppers Californication'],
-  g6: ['Payung Teduh Untuk Perempuan Yang Sedang Dalam Pelukan', 'Fourtwnty Zona Nyaman', 'Jason Mraz I Wont Give Up', 'John Mayer Gravity', 'Norah Jones Come Away With Me'],
-  g7: ['Queen Don\'t Stop Me Now', 'Coldplay Viva La Vida', 'Imagine Dragons Believer', 'Bon Jovi Livin On A Prayer', 'U2 With Or Without You'],
-  g8: ['Adele Someone Like You', 'Glenn Fredly Januari', 'Chrisye Seperti Yang Kau Minta', 'Sam Smith Stay With Me', 'Lewis Capaldi Someone You Loved'],
+  g1: ["Guns N' Roses Welcome to the Jungle", 'Metallica Enter Sandman', 'Linkin Park In The End', 'Avenged Sevenfold Nightmare', 'Queen We Will Rock You', 'Nirvana Come As You Are', 'Foo Fighters Everlong', 'Green Day Boulevard of Broken Dreams'],
+  g2: ['Tulus Monokrom', 'Mahalini Melawan Restu', 'Raisa Kali Kedua', 'Tiara Andini Usai', 'Lyodra Sang Dewi', 'Bernadya Untungnya Hidup Harus Tetap Berjalan', 'Sal Priadi Dari Planet Lain', 'Rizky Febian Hingga Tua Bersama'],
+  g3: ['Hindia Rumah ke Rumah', 'Feast Peradaban', 'Tame Impala The Less I Know The Better', 'Reality Club Anything You Want', 'Radiohead Creep', 'Arctic Monkeys 505', 'The Strokes Last Nite', 'Efek Rumah Kaca Desember'],
+  g4: ['Oasis Wonderwall', 'Blur Song 2', 'The Verve Bitter Sweet Symphony', 'Coldplay Yellow', 'Keane Somewhere Only We Know', 'Oasis Dont Look Back In Anger', 'Pulp Common People', 'Suede Beautiful Ones'],
+  g5: ['Dewa 19 Pupus', 'Sheila On 7 Sephia', 'Padi Begitu Indah', 'Nirvana Come As You Are', 'Red Hot Chili Peppers Californication', 'Dewa 19 Kangen', 'Sheila On 7 Sebuah Kisah Klasik', 'Radiohead High and Dry'],
+  g6: ['Payung Teduh Untuk Perempuan Yang Sedang Dalam Pelukan', 'Fourtwnty Zona Nyaman', 'Jason Mraz I Wont Give Up', 'John Mayer Gravity', 'Norah Jones Come Away With Me', 'Pamungkas Monolog', 'Tulus Pamit', 'Ed Sheeran Thinking Out Loud'],
+  g7: ["Queen Don't Stop Me Now", 'Coldplay Viva La Vida', 'Imagine Dragons Believer', 'Bon Jovi Livin On A Prayer', 'U2 With Or Without You', 'The Killers Mr Brightside', 'Queen We Are The Champions', 'Coldplay Fix You'],
+  g8: ['Adele Someone Like You', 'Glenn Fredly Januari', 'Chrisye Seperti Yang Kau Minta', 'Sam Smith Stay With Me', 'Lewis Capaldi Someone You Loved', 'Mahalini Sial', 'Judika Aku Yang Tersakiti', 'Bruno Mars When I Was Your Man'],
 };
 
 /**
@@ -1531,7 +1561,7 @@ export async function fetchCategoryFeed(category, region = 'ID') {
     tracks = charts.length > 0 ? charts : await fetchTrendingTracks(region);
   } else {
     const queries = CATEGORY_QUERIES[category] || [category];
-    tracks = await _collectUniqueTracks(queries, region, 3, 15);
+    tracks = await _collectUniqueTracks(queries, region, 1, 15);
     if (category === 'Indo Hits' && region === 'ID' && tracks.length < 12) {
       const charts = await fetchTopCharts('ID', 10);
       const seen = new Set(tracks.map((t) => `${(t.title || '').toLowerCase()}::${(t.artist || '').toLowerCase()}`));
@@ -1562,7 +1592,7 @@ export async function fetchGenrePlaylistTracks(genreId, genreTitle, region = 'ID
   }
 
   const queries = GENRE_QUERIES[genreId] || [genreTitle || 'Popular Hits'];
-  const tracks = await _collectUniqueTracks(queries, region, 3, 15);
+  const tracks = await _collectUniqueTracks(queries, region, GENRE_QUERIES[genreId] ? 1 : 3, 15);
 
   if (tracks.length > 0) {
     _categoryCache.set(cacheKey, tracks);
