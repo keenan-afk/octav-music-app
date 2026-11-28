@@ -665,6 +665,11 @@ export function ProfileDrawer({
         isOpen={isStatsModalOpen}
         onClose={() => setIsStatsModalOpen(false)}
         onShowToast={onShowToast}
+        onSelectTrack={(track) => {
+          onSelectTrack?.(track);
+          setIsStatsModalOpen(false);
+          onClose();
+        }}
       />
     </div>
   );

@@ -7,6 +7,7 @@ import {
   fetchSmartRadioRecommendations,
   getTrackDedupeKey,
   getTrackKey,
+  getStreamCacheKey,
   preResolveTrackStream,
   cleanSearchQuery,
   streamCache,
@@ -529,7 +530,13 @@ export function useAudioController(user = null, region = 'ID') {
       if (cur) {
         streamCache.delete(getTrackKey(cur));
         const { cleanTitle, cleanArtist } = cleanSearchQuery(cur.title, cur.artist);
-        streamCache.delete(`${cleanTitle}__${cleanArtist}`.toLowerCase().trim());
+        const cleanBase = `${cleanTitle}__${cleanArtist}`.toLowerCase().trim();
+        const rawBase = getTrackKey(cur);
+        for (const tier of ['96', '160', '320']) {
+          streamCache.delete(`${cleanBase}__${tier}`);
+          streamCache.delete(`${rawBase}__${tier}`);
+        }
+        streamCache.delete(cleanBase);
         if (retriedErrorTrackId !== cur.id && cur.previewUrl && audio.src !== cur.previewUrl) {
           retriedErrorTrackId = cur.id;
           audio.src = cur.previewUrl;
@@ -809,7 +816,7 @@ export function useAudioController(user = null, region = 'ID') {
       }
 
       // Retrieve instant full-length stream URL from cache or resolvedStreamUrl
-      const cachedFullStream = streamCache.get(tKey);
+      const cachedFullStream = streamCache.get(getStreamCacheKey(track)) || streamCache.get(tKey);
       let targetStreamUrl =
         cachedFullStream ||
         track.resolvedStreamUrl ||

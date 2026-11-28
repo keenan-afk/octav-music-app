@@ -211,10 +211,13 @@ export function SmartArtwork({
         >
           {validCovers.map((c, i) => (
             <img
-              key={i}
+              key={`${c}-${i}`}
               src={c.replace(/^http:\/\//i, 'https://')}
               alt=""
-              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.currentTarget.style.opacity = '0';
+              }}
+              className="w-full h-full object-cover bg-[#14141a]"
               loading="lazy"
             />
           ))}

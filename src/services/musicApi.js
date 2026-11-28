@@ -504,14 +504,31 @@ export function pickBestStreamCandidate(candidateSongs = [], title = '', artist 
   return bestCandidate;
 }
 
+function _getQualityTier() {
+  let qualityPref = 'High';
+  try {
+    qualityPref = localStorage.getItem('octav_audio_quality') || 'High';
+  } catch {}
+  if (qualityPref.includes('96kbps') || qualityPref === 'Data Saver') return '96';
+  if (qualityPref.includes('160kbps') || qualityPref === 'Normal') return '160';
+  return '320';
+}
+
+export function getStreamCacheKey(track) {
+  if (!track) return '';
+  return `${getTrackKey(track)}__${_getQualityTier()}`;
+}
+
 /**
  * 3-Tier Multi-Engine Full-Length Audio Stream Resolver
  * High-speed concurrent mirror resolution (320kbps / 160kbps full streams)
  */
 export async function resolveAudioStream(title, artist, fallbackUrl = '', targetDuration = 0) {
+  const qualityTier = _getQualityTier();
+
   const { cleanTitle, cleanArtist } = cleanSearchQuery(title, artist);
-  const cacheKey = `${cleanTitle}__${cleanArtist}`.toLowerCase().trim();
-  const rawKey = `${(title || '').toLowerCase().trim()}__${(artist || '').toLowerCase().trim()}`;
+  const cacheKey = `${cleanTitle}__${cleanArtist}__${qualityTier}`.toLowerCase().trim();
+  const rawKey = `${(title || '').toLowerCase().trim()}__${(artist || '').toLowerCase().trim()}__${qualityTier}`;
 
   if (streamCache.has(cacheKey)) {
     return streamCache.get(cacheKey);
@@ -567,11 +584,6 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
     }
 
     if (candidateSongs.length > 0) {
-      let qualityPref = '320kbps';
-      try {
-        qualityPref = localStorage.getItem('octav_audio_quality') || '320kbps';
-      } catch { }
-
       // Pick highest-scoring verified candidate, retrying next valid pool item if URL is malformed
       const remainingPool = [...candidateSongs];
       while (remainingPool.length > 0) {
@@ -582,11 +594,16 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
 
         const downloadList = selectedSong.downloadUrl || selectedSong.download_url || [];
         let best = null;
-        if (qualityPref.includes('96kbps')) {
+        if (qualityTier === '96') {
           best =
             downloadList.find((d) => d.quality === '96kbps') ||
             downloadList.find((d) => d.quality === '160kbps') ||
             downloadList[0];
+        } else if (qualityTier === '160') {
+          best =
+            downloadList.find((d) => d.quality === '160kbps') ||
+            downloadList.find((d) => d.quality === '96kbps') ||
+            downloadList[downloadList.length - 1];
         } else {
           best =
             downloadList.find((d) => d.quality === '320kbps') ||
@@ -620,7 +637,7 @@ export async function resolveAudioStream(title, artist, fallbackUrl = '', target
  */
 export async function preResolveTrackStream(track) {
   if (!track || !track.title) return '';
-  const key = getTrackKey(track);
+  const key = getStreamCacheKey(track);
   if (streamCache.has(key)) {
     const cached = streamCache.get(key);
     track.resolvedStreamUrl = cached;
