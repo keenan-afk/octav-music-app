@@ -87,11 +87,14 @@ export function ArtistProfileSheet({
     }
   }, [isOpen]);
 
-  // Fetch artist top tracks and metadata
+  // Fetch artist top tracks and metadata (clear previous artist immediately so covers/albums never swap)
   useEffect(() => {
     if (!artist || !isOpen) return;
 
     let isMounted = true;
+    setArtistData(null);
+    setTracks([]);
+    setAlbums([]);
     setIsLoading(true);
 
     fetchArtistDiscography(artist, region)

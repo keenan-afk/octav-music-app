@@ -246,7 +246,7 @@ export function PlaylistDetailView({
           title={playlist.isCustom ? 'Change playlist cover image' : playlist.title}
         >
           <SmartArtwork
-            src={playlist.cover || tracks[0]?.cover || ''}
+            src={playlist.cover || ''}
             mosaicCovers={tracks.map((t) => t.cover)}
             className="w-full h-full object-cover"
             alt={playlist.title}

@@ -65,6 +65,7 @@ export function HorizontalShelf({ title, items = [], onSelectItem, onOpenArtist,
                 src={item.cover}
                 title={item.title}
                 artist={item.artist || item.curator || item.subtitle}
+                isAlbum={Boolean(item.collectionId || item.type === 'Album')}
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                 alt={item.title}
               />

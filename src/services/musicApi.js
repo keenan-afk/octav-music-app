@@ -1499,7 +1499,7 @@ function _readSessionCategoryCache(key) {
       _categoryCache.set(key, parsed.tracks);
       return parsed.tracks;
     }
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -1513,7 +1513,7 @@ function _writeSessionCategoryCache(key, tracks) {
         JSON.stringify({ tracks, expiresAt: Date.now() + CATEGORY_SESSION_TTL_MS })
       );
     }
-  } catch {}
+  } catch { }
 }
 
 function _decodeBasicEntities(str = '') {
@@ -1594,22 +1594,26 @@ async function _searchJioSaavnCatalog(query, limit = 6) {
       }
       if (mapped.length > 0) {
         const qTokens = normalizeMatchText(query).split(' ').filter((w) => w.length >= 2);
-        mapped.sort((a, b) => {
-          const scoreItem = (t) => {
-            const ta = `${normalizeMatchText(t.artist)} ${normalizeMatchText(t.title)}`;
+        const scored = mapped
+          .map((t) => {
             const artN = normalizeMatchText(t.artist);
-            let sc = 0;
+            const titN = normalizeMatchText(t.title);
+            let artistHits = 0;
+            let titleHits = 0;
             for (const tok of qTokens) {
-              if (artN.includes(tok)) sc += 3;
-              else if (ta.includes(tok)) sc += 1;
+              if (artN.includes(tok)) artistHits += 1;
+              if (titN.includes(tok)) titleHits += 1;
             }
-            return sc;
-          };
-          return scoreItem(b) - scoreItem(a);
-        });
-        return mapped;
+            return { track: t, artistHits, titleHits, score: artistHits * 3 + titleHits };
+          })
+          // Filter out completely unrelated cover/DJ remixes when query specifies artist + song
+          .filter((entry) => qTokens.length < 2 || entry.artistHits > 0)
+          .sort((a, b) => b.score - a.score)
+          .map((entry) => entry.track);
+
+        if (scored.length > 0) return scored;
       }
-    } catch {}
+    } catch { }
   }
   return [];
 }

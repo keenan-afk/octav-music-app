@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Disc, Music, User } from 'lucide-react';
 import { safeTimeoutSignal, isArtistStrictMatch, fetchArtistPortrait } from '../services/musicApi';
 
@@ -27,10 +27,7 @@ export function SmartArtwork({
   style = {},
   ...props
 }) {
-  const isArtistQuery =
-    isArtist ||
-    (!isAlbum && title && artist && title.toLowerCase().trim() === artist.toLowerCase().trim()) ||
-    (!isAlbum && !title && artist);
+  const isArtistQuery = Boolean(isArtist || (!isAlbum && !title && artist));
   const cacheKey = `${isArtistQuery ? 'artist' : isAlbum ? 'album' : 'song'}_${title}_${artist}`
     .trim()
     .toLowerCase();
@@ -39,15 +36,19 @@ export function SmartArtwork({
   const [currentSrc, setCurrentSrc] = useState(initialSrc);
   const [hasError, setHasError] = useState(!initialSrc);
   const [isRecovering, setIsRecovering] = useState(false);
+  const requestTokenRef = useRef(0);
 
   useEffect(() => {
+    requestTokenRef.current += 1;
+    setIsRecovering(false);
     const formatted = src ? src.replace(/^http:\/\//i, 'https://') : (artworkCache.get(cacheKey) || '');
     setCurrentSrc(formatted);
     setHasError(!formatted);
   }, [src, cacheKey]);
 
   const handleError = async () => {
-    // Prevent repeated loops if already tried
+    const token = requestTokenRef.current;
+    // Prevent repeated loops if already tried for the current artwork item
     if (isRecovering) {
       setHasError(true);
       return;
@@ -74,6 +75,7 @@ export function SmartArtwork({
       if (isArtistQuery) {
         const targetArtist = artist || title;
         const portrait = await fetchArtistPortrait(targetArtist);
+        if (requestTokenRef.current !== token) return;
         if (portrait) {
           artworkCache.set(cacheKey, portrait);
           setCurrentSrc(portrait);
@@ -88,7 +90,12 @@ export function SmartArtwork({
 
       const targetTitle = (title || '').trim();
       const targetArtist = (artist || '').trim();
-      const cleanTitle = targetTitle.toLowerCase().replace(/[^\w\s]/g, '').trim();
+      const cleanTitle = targetTitle
+        .toLowerCase()
+        .replace(/\(.*?\)|\[.*?\]/g, ' ')
+        .replace(/[^\w\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 
       // 2. If this is an ALBUM: Query Apple Music iTunes entity=album strictly
       if (isAlbum) {
@@ -97,13 +104,19 @@ export function SmartArtwork({
           term
         )}`;
         const res = await fetch(url, { signal: safeTimeoutSignal(3500) });
+        if (requestTokenRef.current !== token) return;
         if (res.ok) {
           const data = await res.json();
+          if (requestTokenRef.current !== token) return;
           const results = data.results || [];
           const match = results.find((item) => {
             const itemArtist = (item.artistName || '').toLowerCase().trim();
             const itemAlbum = (item.collectionName || '').toLowerCase().trim();
-            const cleanItemAlbum = itemAlbum.replace(/[^\w\s]/g, '').trim();
+            const cleanItemAlbum = itemAlbum
+              .replace(/\(.*?\)|\[.*?\]/g, ' ')
+              .replace(/[^\w\s]/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim();
 
             const artistMatches = targetArtist ? isArtistStrictMatch(itemArtist, targetArtist) : true;
             if (!artistMatches) return false;
@@ -112,8 +125,7 @@ export function SmartArtwork({
               !cleanTitle ||
               itemAlbum === targetTitle.toLowerCase().trim() ||
               cleanItemAlbum === cleanTitle ||
-              cleanItemAlbum.startsWith(cleanTitle) ||
-              cleanTitle.startsWith(cleanItemAlbum);
+              cleanItemAlbum.startsWith(`${cleanTitle} `);
 
             return albumMatches;
           });
@@ -127,6 +139,7 @@ export function SmartArtwork({
             return;
           }
         }
+        if (requestTokenRef.current !== token) return;
         setIsRecovering(false);
         setHasError(true);
         return;
@@ -139,16 +152,21 @@ export function SmartArtwork({
       )}`;
 
       const res = await fetch(url, { signal: safeTimeoutSignal(3500) });
+      if (requestTokenRef.current !== token) return;
       if (res.ok) {
         const data = await res.json();
+        if (requestTokenRef.current !== token) return;
         const results = data.results || [];
 
-        // STRICT MATCHING: Must match BOTH the artist AND the track title!
-        // Never assign an artwork of a different song or a different artist!
+        // STRICT MATCHING: Must match BOTH the artist AND the exact track title!
         const match = results.find((item) => {
           const itemArtist = (item.artistName || '').toLowerCase().trim();
           const itemTitle = (item.trackName || '').toLowerCase().trim();
-          const cleanItemTitle = itemTitle.replace(/[^\w\s]/g, '').trim();
+          const cleanItemTitle = itemTitle
+            .replace(/\(.*?\)|\[.*?\]/g, ' ')
+            .replace(/[^\w\s]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
 
           const artistMatches = targetArtist ? isArtistStrictMatch(itemArtist, targetArtist) : true;
           if (!artistMatches) return false;
@@ -157,8 +175,7 @@ export function SmartArtwork({
             !cleanTitle ||
             itemTitle === targetTitle.toLowerCase().trim() ||
             cleanItemTitle === cleanTitle ||
-            cleanItemTitle.startsWith(cleanTitle) ||
-            cleanTitle.startsWith(cleanItemTitle);
+            cleanItemTitle.startsWith(`${cleanTitle} `);
 
           return titleMatches;
         });
@@ -176,6 +193,7 @@ export function SmartArtwork({
       // Fall through to vinyl disc fallback
     }
 
+    if (requestTokenRef.current !== token) return;
     setIsRecovering(false);
     setHasError(true);
   };
@@ -264,6 +282,7 @@ export function SmartArtwork({
   return (
     <div className={`relative overflow-hidden ${rounded} ${className}`} style={style}>
       <img
+        key={currentSrc}
         src={currentSrc}
         alt={alt || title}
         onError={handleError}
